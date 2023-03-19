@@ -6,9 +6,8 @@
 #include<geometry_msgs/Pose.h>
 #include "mtg_messages/mtg_controller.h"
 #include "mtg_task_allocation/ta_out.h"
-#include "include/cbs.h"
+#include "include/HighLevelSearch.h"
 using namespace std;
-#include<vector>
 
 typedef tuple<float, float, int> WorldLoc;
 
@@ -18,7 +17,7 @@ typedef tuple<float, float, int> WorldLoc;
 
 class mapReceiveClass{
     public:
-    Grid planningGrid;
+    NavGrid planningGrid;
     ros::NodeHandle nh;
     ros::Subscriber sub;
     ros::ServiceClient cl; 
@@ -65,17 +64,10 @@ class mapReceiveClass{
             int sy = this->planningGrid.height - (int)(call.response.agent_start[i].position.y/this->planningGrid.resolution);
             int gx = (int)(call.response.agent_goals[i].position.x/this->planningGrid.resolution);
             int gy = this->planningGrid.height - (int)(call.response.agent_goals[i].position.y/this->planningGrid.resolution);
-            cout << sx << " " << sy << " " << gx << " " << gy << endl;
+            cout << sx << ", " << sy << ", " << gx << ", " << gy << endl;
             inputTasks.push_back(make_tuple(sx, sy, gx, gy));
         }
-
-        cout << "Task vector size: " << inputTasks.size() << endl;
-
-        // inputTasks.push_back(make_tuple(8,60,18,55));
-        // inputTasks.push_back(make_tuple(8,55,18,60));
-        // inputTasks.push_back(make_tuple(5,45,15,55));
-        // inputTasks.push_back(make_tuple(5,55,15,45));
-        Astar plannerObject(this->planningGrid);
+        LowLevelPlanner plannerObject(this->planningGrid);
         results = cbsSearch(inputTasks, plannerObject);
         return results;
     }
@@ -96,6 +88,34 @@ class mapReceiveClass{
                 agent_world_coords[j].pose.position.x = x;
                 agent_world_coords[j].pose.position.y = y;
 
+            }
+
+            world_result[i].poses = agent_world_coords;
+        }
+        return world_result;
+    }
+
+    vector<nav_msgs::Path> gridToWorldTransformAnyAngle(vector<vector<TimedLoc>> results){
+
+
+        nav_msgs::Path dummy_path;
+        vector<nav_msgs::Path> world_result(results.size(), dummy_path);
+        
+        for(int i=0; i < results.size(); i++){
+            vector<TimedLoc> agent_grid_coords = results.at(i);
+            float max_time = get<2>(agent_grid_coords.back());
+            geometry_msgs::PoseStamped dummy;
+            vector<geometry_msgs::PoseStamped> agent_world_coords;
+
+            float t = 0;
+            while(t <= max_time){
+                tuple<float, float, float> loc_agent_i = getLoc(agent_grid_coords, t);
+                float x = this->planningGrid.resolution*get<0>(loc_agent_i);
+                float y = this->planningGrid.resolution*(this->planningGrid.height - get<1>(loc_agent_i));
+                agent_world_coords.push_back(dummy);
+                agent_world_coords[agent_world_coords.size()-1].pose.position.x = x;
+                agent_world_coords[agent_world_coords.size()-1].pose.position.y = y;
+                t += 0.1;
             }
 
             world_result[i].poses = agent_world_coords;
@@ -150,9 +170,9 @@ int main(int argc, char **argv){
 
     while(ros::ok()){
         ros::spinOnce();
-        if(!mpC.planningGrid.g.empty() and flag){
+        if(!mpC.planningGrid.grid.empty() and flag){
             output = mpC.findPaths();
-            paths_to_send = mpC.gridToWorldTransform(output);
+            paths_to_send = mpC.gridToWorldTransformAnyAngle(output);
             mpC.logOutput(output);
             agent_names = mpC.createAgentNames(output);
             vector<int64_t> goal_ids(agent_names.size(), 1);

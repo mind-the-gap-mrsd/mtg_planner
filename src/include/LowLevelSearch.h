@@ -136,8 +136,8 @@ class LowLevelPlanner{
     }
 
     bool hitsObstacle(int pos_x, int pos_y){
-        for(int i=-1*agent_size; i < agent_size; i++){
-            for(int j=-1*agent_size; j < agent_size; j++){
+        for(int i=-1*(agent_size/2 + 1); i <= (agent_size/2); i++){
+            for(int j=-1*(agent_size/2+1); j <= (agent_size/2); j++){
                 if(inMap(pos_x +i, pos_y + j)){
                     if(this->planning_grid.grid[pos_y + j][pos_x + i] == 1){
                         return true;
@@ -154,8 +154,8 @@ class LowLevelPlanner{
 
         vector<tuple<int, int>> constrained_list;
 
-        for(int i=-1*(agent_size); i <= agent_size + 1; i++){
-            for(int j=-1*(agent_size); j <= agent_size+1; j++){
+        for(int i=-1*(agent_size/2 + 1); i <= (agent_size/2) + 1; i++){
+            for(int j=-1*(agent_size/2 + 1); j <= (agent_size/2)+1; j++){
                 if(inMap(x_imp+i, y_imp + j)){
                     constrained_list.push_back(make_tuple(x_imp +i, y_imp + j));
                 }
@@ -256,7 +256,7 @@ class LowLevelPlanner{
             e = e + b;
             }
             if(inMap(x, y)){
-                if(this->planning_grid.grid[y][x] == 1) {return false;}
+                if(hitsObstacle(x, y)) {return false;}
                 Node intermediate(x, y, node1);
                 intermediate.t = node1.t + computePathCost(intermediate, node1)/agent_velocity + abs(node1.heading - node2.heading)/agent_ang_vel; 
                 if(isConstrained(intermediate)) {return false;}
@@ -320,8 +320,8 @@ class LowLevelPlanner{
                 int new_pos_y = curr_node.y + this->move[dir][1];
 
                 if(!inMap(new_pos_x, new_pos_y)) { continue; }
-                if(this->planning_grid.grid[new_pos_y][new_pos_x] == 1){continue;}
-                // if(hitsObstacle(new_pos_x, new_pos_y)) { continue; }
+                // if(this->planning_grid.grid[new_pos_y][new_pos_x] == 1){continue;}
+                if(hitsObstacle(new_pos_x, new_pos_y)) { continue; }
 
                 Node child(new_pos_x, new_pos_y, curr_node);
 

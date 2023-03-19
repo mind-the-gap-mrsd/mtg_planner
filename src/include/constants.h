@@ -1,9 +1,9 @@
-float agent_velocity = 1;
-float agent_ang_vel = 1;
-int agent_size = 1;
-float grid_resolution = 1;
-float x_eps = (2*agent_size+1)*grid_resolution;
-float t_eps = 0.5*(3.141/(agent_ang_vel) + (x_eps)/agent_velocity);
+float agent_velocity = 0.5;
+float agent_ang_vel = 0.5;
+int agent_size = 3;
+float grid_resolution = 0.05;
+float x_eps = (agent_size+1)*grid_resolution;
+float t_eps = (0.5*(3.141/(agent_ang_vel) + (x_eps)/agent_velocity)+1);
 float delta_t = 0.1;
 
 typedef tuple<int, int, float> TimedLoc;

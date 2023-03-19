@@ -8,9 +8,10 @@
 #include<queue>
 #include<map>
 #include<array>
+#include "NavGrid.h"
 using namespace std;
 
-typedef tuple<int, int, int, int> Quad;
+typedef tuple<int, int, int, int> Task;
 typedef pair<int, int> Pair;
 typedef tuple<int,int,int> TimedLoc;
 typedef tuple<Pair,Pair,int> Collision;
@@ -63,96 +64,29 @@ struct NodeComparator{
     }
 };
 
-class Grid{
-    public:
-    int height, width;
-    float resolution;
-    vector<vector<int>> g;
-    // Grid(string filename){
-    //     ifstream obs_file;
-    //     obs_file.open(filename);
-    //     string line;
-    //     int i  = 0;
-    //     if(obs_file.is_open()){
-    //         while(obs_file){
-    //             getline(obs_file, line);
-    //             if(i == 0){
-    //                 this->height = stoi(line);
-    //             }
-    //             else if(i == 1){
-    //                 this->width = stoi(line);
-    //                 vector<vector<int>> temp(this->height, vector<int>(this->width, 0));
-    //                 this->g = temp;
-    //             }
-    //             else{
-    //                 int split = line.find(",");
-    //                 int x = stoi(line.substr(0,split));
-    //                 int y = stoi(line.substr(split+1));
-    //                 cout << this->height << ", " << this->width << endl;
-    //                 this->g[y][x] = 1;
-    //             }
-    //             i++;
-    //         }
-    //     }   
-
-    // }
-
-    Grid(int h, int w, float res, vector<int> data){
-        this->height = h;
-        this->width = w;
-        this->resolution = res;
-        vector<vector<int>> temp(h, vector<int>(w, 0));
-        this->g = temp;
-        for(int i=0; i < h; i++){
-            for(int j=0; j < w; j++){
-                if(data[i*w + j] == 100)
-                    this->g[h-1-i][j] = 1;
-                else
-                    this->g[h-1-i][j] = 0;
-            }
-        }
-    }
-    Grid(){
-        this->height = 0;
-        this->width = 0;
-        vector<vector<int>> temp;
-        this->g = temp;
-    }
-
-    void printGrid(){
-        if(!this->g.empty()){
-            for(int i=0; i < this->height; i++){
-                for(int j=0; j < this->width; j++){
-                    cout << this->g[i][j];
-                }
-                cout << endl;
-            }
-        }
-    }
-};
-
-class Astar{
+class LowLevelPlanner{
     public:
     int x0, y0, xf, yf, agent_id;
     int max_time;
-    Grid grid;
+    NavGrid grid;
+    float agent_size = 0.15;
     // array<array<int, 2>, 9> move = {{{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}, {-1,-1}, {1,-1}, {-1,1}, {1,1}}};
     array<array<int, 2>, 5> move = {{{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}}};
     priority_queue<Node, vector<Node>, NodeComparator> open_queue;
     map<TimedLoc, Node> closed_list;
     map<int, map<LocPair, int>> constraint_table;
 
-    Astar(){
+    LowLevelPlanner(){
         this->x0 = -1;
         this->y0 = -1;
         this->xf = -1;
         this->yf = -1;
-        Grid temp;
+        NavGrid temp;
         this->grid = temp;
         this->max_time = -1;
         this->agent_id = -1;
     }
-    Astar(Grid map){
+    LowLevelPlanner(NavGrid map){
         this->grid = map;
         this->max_time = 0;
         this->agent_id = -1;
@@ -175,6 +109,20 @@ class Astar{
             return false;
 
         return true;
+    }
+
+    bool isColliding(int pos_x, int pos_y){
+        float res = this->grid.resolution;
+        int agent_size_units = (int)ceil(this->agent_size/res) + 1;
+        for(int delx = -(agent_size_units/2 +1); delx <= (agent_size_units/2+1); delx++){
+            for(int dely = -(agent_size_units/2+1); dely <= (agent_size_units/2+1); dely++){
+                if(inMap(pos_x + delx, pos_y + dely)){
+                    if(this->grid.grid[pos_y + dely][pos_x + delx] == 1)
+                        return true;
+                }
+            }
+        }
+        return false;
     }
 
     // Constraint structure -> (agentID, Loc1, Loc2, time)
@@ -224,7 +172,7 @@ class Astar{
         return result;
     }
 
-    vector<TimedLoc> beginSearch(Quad task, int id, vector<Constraint> constraints){
+    vector<TimedLoc> beginSearch(Task task, int id, vector<Constraint> constraints){
 
         while(!this->open_queue.empty())
             this->open_queue.pop();
@@ -260,7 +208,8 @@ class Astar{
 
                 if(!inMap(new_pos_x, new_pos_y)) { continue; }
 
-                if(this->grid.g[new_pos_y][new_pos_x] == 1) { continue; }
+                // if(this->grid.grid[new_pos_y][new_pos_x] == 1) { continue; }
+                if(isColliding(new_pos_x, new_pos_y)) { continue; }
 
                 Node child(new_pos_x, new_pos_y, curr_node);
                 child.h = computeHeuristic(child);

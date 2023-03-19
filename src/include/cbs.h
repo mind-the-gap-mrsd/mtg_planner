@@ -111,7 +111,7 @@ struct CTNodeComparator{
 
 //////////////////////////////////////////// Main Search Function //////////////////////////////////////////////////////////
 
-vector<vector<TimedLoc>> cbsSearch(vector<Quad> tasks, Astar plannerObject){
+vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerObject){
 
     priority_queue<CTNode, vector<CTNode>, CTNodeComparator> open_queue;
     CTNode root;
