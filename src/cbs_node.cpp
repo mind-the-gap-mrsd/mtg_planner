@@ -6,7 +6,9 @@
 #include<geometry_msgs/Pose.h>
 #include "mtg_messages/mtg_controller.h"
 #include "mtg_task_allocation/ta_out.h"
-#include "include/HighLevelSearch.h"
+#include<std_msgs/Bool.h>
+#include "include/cbs.h"
+
 using namespace std;
 
 typedef tuple<float, float, int> WorldLoc;
@@ -20,6 +22,7 @@ class mapReceiveClass{
     NavGrid planningGrid;
     ros::NodeHandle nh;
     ros::Subscriber sub;
+    ros::Subscriber goal_set_subscriber;
     ros::ServiceClient cl; 
 
     mapReceiveClass(){
@@ -27,6 +30,7 @@ class mapReceiveClass{
         this->nh = n;
         this->sub = this->nh.subscribe("/sim_map", 10, &mapReceiveClass::mapReceiveCallback, this);
         this->cl = this->nh.serviceClient<mtg_task_allocation::ta_out>("/ta_out");
+        this->goal_set_subscriber = this->nh.subscribe<std_msgs::Bool>("goals_set", 10, &mapReceiveClass::goal_set_callback, this);
     }
     void mapReceiveCallback(const nav_msgs::OccupancyGrid& recvOG){
     
@@ -43,7 +47,35 @@ class mapReceiveClass{
         NavGrid grid(mapHeight, mapWidth, mapResolution, occupData);
         this->planningGrid = grid;
 
-    };
+    }
+    void goal_set_callback(const std_msgs::Bool::ConstPtr& goal_set){
+        std::cout << "callback called" << std::endl;
+        int occupied = 0;
+        int free = 0;
+        vector<vector<TimedLoc>> output;
+        vector<nav_msgs::Path> paths_to_send;
+        vector<string> agent_names;
+        if(!this->planningGrid.grid.empty()){
+            output = this->findPaths();
+            paths_to_send = this->gridToWorldTransform(output);
+            this->logOutput(output);
+            agent_names = this->createAgentNames(output);
+            vector<int64_t> goal_ids(agent_names.size(), 1);
+            vector<int64_t> goal_types(agent_names.size(), 1);
+
+            ros::ServiceClient client = this->nh.serviceClient<mtg_messages::mtg_controller>("/mtg_controller/controller/");
+
+            mtg_messages::mtg_controller call;
+            call.request.stop_controller = false;
+            call.request.agent_names = agent_names;
+            call.request.paths = paths_to_send;
+            call.request.goal_id = goal_ids;
+            call.request.goal_type = goal_types;
+
+            client.call(call);
+
+        }
+    }
     vector<vector<TimedLoc>> findPaths(){
 
         vector<vector<TimedLoc>> results;
@@ -95,7 +127,7 @@ class mapReceiveClass{
         return world_result;
     }
 
-    vector<nav_msgs::Path> gridToWorldTransformAnyAngle(vector<vector<TimedLoc>> results){
+    vector<nav_msgs::Path> gridToWorldTransformAnyAngle(vector<vector<TimedLoc>> results, float timestep){
 
 
         nav_msgs::Path dummy_path;
@@ -115,7 +147,7 @@ class mapReceiveClass{
                 agent_world_coords.push_back(dummy);
                 agent_world_coords[agent_world_coords.size()-1].pose.position.x = x;
                 agent_world_coords[agent_world_coords.size()-1].pose.position.y = y;
-                t += 0.1;
+                t += timestep;
             }
 
             world_result[i].poses = agent_world_coords;
@@ -156,42 +188,6 @@ int main(int argc, char **argv){
     ros::NodeHandle n;
 
     mapReceiveClass mpC;
-    int occupied = 0;
-    int free = 0;
-    bool flag = true;
-    vector<vector<TimedLoc>> output;
-    vector<nav_msgs::Path> paths_to_send;
-    vector<string> agent_names;
-
-    // mpC.findPaths();
-    // mpC.logOutput();
-
-    ros::Rate loop_rate(20);
-
-    while(ros::ok()){
-        ros::spinOnce();
-        if(!mpC.planningGrid.grid.empty() and flag){
-            output = mpC.findPaths();
-            paths_to_send = mpC.gridToWorldTransformAnyAngle(output);
-            mpC.logOutput(output);
-            agent_names = mpC.createAgentNames(output);
-            vector<int64_t> goal_ids(agent_names.size(), 1);
-            vector<int64_t> goal_types(agent_names.size(), 1);
-
-            ros::ServiceClient client = n.serviceClient<mtg_messages::mtg_controller>("/mtg_controller/controller/");
-
-            mtg_messages::mtg_controller call;
-            call.request.stop_controller = false;
-            call.request.agent_names = agent_names;
-            call.request.paths = paths_to_send;
-            call.request.goal_id = goal_ids;
-            call.request.goal_type = goal_types;
-
-            client.call(call);
-            flag = false;
-
-        }
-    }
-
+    ros::spin();
 
 }

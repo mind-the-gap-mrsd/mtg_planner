@@ -124,15 +124,12 @@ vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerOb
     root.sum_of_costs = getSumOfCosts(root.paths);
     root.collisions = detectCollisionsInPaths(root.paths);
     open_queue.push(root);
-    int count = 0;
 
     while(!open_queue.empty()){
-        count++;
         CTNode current_ct_node = open_queue.top();
         open_queue.pop();
 
         if(current_ct_node.collisions.empty()) { return current_ct_node.paths; }
-        if(count == 5) {return current_ct_node.paths;}
 
         TimedCol curr_collision = current_ct_node.collisions.at(0);
         vector<Constraint> resolved_constraints = resolveCollision(curr_collision);
