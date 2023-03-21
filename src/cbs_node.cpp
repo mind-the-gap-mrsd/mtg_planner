@@ -7,7 +7,7 @@
 #include "mtg_messages/mtg_controller.h"
 #include "mtg_task_allocation/ta_out.h"
 #include<std_msgs/Bool.h>
-#include "include/cbs.h"
+#include "include/HighLevelSearch.h"
 
 using namespace std;
 
@@ -57,7 +57,7 @@ class mapReceiveClass{
         vector<string> agent_names;
         if(!this->planningGrid.grid.empty()){
             output = this->findPaths();
-            paths_to_send = this->gridToWorldTransform(output);
+            paths_to_send = this->gridToWorldTransformAnyAngle(output, delta_t);
             this->logOutput(output);
             agent_names = this->createAgentNames(output);
             vector<int64_t> goal_ids(agent_names.size(), 1);

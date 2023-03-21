@@ -154,8 +154,8 @@ class LowLevelPlanner{
 
         vector<tuple<int, int>> constrained_list;
 
-        for(int i=-1*(agent_size/2 + 1); i <= (agent_size/2) + 1; i++){
-            for(int j=-1*(agent_size/2 + 1); j <= (agent_size/2)+1; j++){
+        for(int i=-1*(agent_size/2 + 1); i <= (agent_size/2 + 1); i++){
+            for(int j=-1*(agent_size/2 + 1); j <= (agent_size/2 +1); j++){
                 if(inMap(x_imp+i, y_imp + j)){
                     constrained_list.push_back(make_tuple(x_imp +i, y_imp + j));
                 }
@@ -258,7 +258,7 @@ class LowLevelPlanner{
             if(inMap(x, y)){
                 if(hitsObstacle(x, y)) {return false;}
                 Node intermediate(x, y, node1);
-                intermediate.t = node1.t + computePathCost(intermediate, node1)/agent_velocity + abs(node1.heading - node2.heading)/agent_ang_vel; 
+                intermediate.t = node1.t + computePathCost(intermediate, node1)*this->planning_grid.resolution/agent_velocity + abs(node1.heading - node2.heading)/agent_ang_vel; 
                 if(isConstrained(intermediate)) {return false;}
             }
         }
@@ -298,6 +298,7 @@ class LowLevelPlanner{
         this->agent_id = id;
 
         buildConstraintTable(constraints);
+        
 
         Node start(x0, y0);
         start.h = computeHeuristic(start);
@@ -336,7 +337,7 @@ class LowLevelPlanner{
                     if(dir != 0){
                         child.heading = atan2(child.y - parent_of_curr.y, child.x - parent_of_curr.x);
                         float parent_child_dist = computePathCost(parent_of_curr, child);
-                        child.t = parent_of_curr.t + abs(child.heading - parent_of_curr.heading)/agent_ang_vel + parent_child_dist/agent_velocity;
+                        child.t = parent_of_curr.t + abs(child.heading - parent_of_curr.heading)/agent_ang_vel + parent_child_dist*this->planning_grid.resolution/agent_velocity;
                         child.g = parent_of_curr.g + parent_child_dist;
                         child.f = child.g + child.h;
                     }
@@ -349,7 +350,7 @@ class LowLevelPlanner{
                     if(dir != 0){
                         child.heading = atan2(child.y - curr_node.y, child.x - curr_node.x);
                         float curr_child_dist = computePathCost(curr_node, child);
-                        child.t = curr_node.t + abs(child.heading-curr_node.heading)/agent_ang_vel + curr_child_dist/agent_velocity;
+                        child.t = curr_node.t + abs(child.heading-curr_node.heading)/agent_ang_vel + curr_child_dist*this->planning_grid.resolution/agent_velocity;
                         child.g = curr_node.g + curr_child_dist;
                         child.f = child.g + child.h;
                     }

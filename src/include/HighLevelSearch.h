@@ -19,7 +19,7 @@ using namespace std;
 tuple<float, float, float> detectFirstCollision(vector<TimedLoc> path1, vector<TimedLoc> path2){
     float max_time = max(get<2>(path1.back()), get<2>(path2.back()));
     float t_iter = 0;
-    while(t_iter < max_time){
+    while(t_iter <= max_time){
         tuple<float, float, float> loc1 = getLoc(path1, t_iter);
         tuple<float, float, float> loc2 = getLoc(path2, t_iter);
         float distance = sqrt(pow(get<0>(loc2) - get<0>(loc1), 2) + pow(get<1>(loc2) - get<1>(loc1), 2));
@@ -27,6 +27,7 @@ tuple<float, float, float> detectFirstCollision(vector<TimedLoc> path1, vector<T
             float x_imp = 0.5*(get<0>(loc1) + get<0>(loc2));
             float y_imp = 0.5*(get<1>(loc1) + get<1>(loc2));
             return make_tuple(x_imp, y_imp, t_iter);
+            
         }
         t_iter += delta_t;
     }
