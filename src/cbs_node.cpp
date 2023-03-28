@@ -57,8 +57,8 @@ class mapReceiveClass{
         vector<string> agent_names;
         if(!this->planningGrid.grid.empty()){
             output = this->findPaths();
-            paths_to_send = this->gridToWorldTransformAnyAngle(output, delta_t);
             this->logOutput(output);
+            paths_to_send = this->gridToWorldTransformAnyAngle(output, 0.25);
             agent_names = this->createAgentNames(output);
             vector<int64_t> goal_ids(agent_names.size(), 1);
             vector<int64_t> goal_types(agent_names.size(), 1);
@@ -99,6 +99,7 @@ class mapReceiveClass{
             cout << sx << ", " << sy << ", " << gx << ", " << gy << endl;
             inputTasks.push_back(make_tuple(sx, sy, gx, gy));
         }
+
         LowLevelPlanner plannerObject(this->planningGrid);
         results = cbsSearch(inputTasks, plannerObject);
         return results;
@@ -140,8 +141,12 @@ class mapReceiveClass{
             vector<geometry_msgs::PoseStamped> agent_world_coords;
 
             float t = 0;
-            while(t <= max_time){
+            while(t <= max_time + timestep){
                 tuple<float, float, float> loc_agent_i = getLoc(agent_grid_coords, t);
+                if(get<0>(loc_agent_i) == get<0>(getLoc(agent_grid_coords, t - timestep)) && get<1>(loc_agent_i) == get<1>(getLoc(agent_grid_coords, t - timestep))){
+                    t += timestep;
+                    continue;
+                }
                 float x = this->planningGrid.resolution*get<0>(loc_agent_i);
                 float y = this->planningGrid.resolution*(this->planningGrid.height - get<1>(loc_agent_i));
                 agent_world_coords.push_back(dummy);

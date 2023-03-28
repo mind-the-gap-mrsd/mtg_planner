@@ -136,8 +136,8 @@ class LowLevelPlanner{
     }
 
     bool hitsObstacle(int pos_x, int pos_y){
-        for(int i=-1*(agent_size/2 + 1); i <= (agent_size/2); i++){
-            for(int j=-1*(agent_size/2+1); j <= (agent_size/2); j++){
+        for(int i=-1*(agent_size/2 + 1); i <= (agent_size/2 + 1); i++){
+            for(int j=-1*(agent_size/2 + 1); j <= (agent_size/2 + 1); j++){
                 if(inMap(pos_x +i, pos_y + j)){
                     if(this->planning_grid.grid[pos_y + j][pos_x + i] == 1){
                         return true;
@@ -154,10 +154,11 @@ class LowLevelPlanner{
 
         vector<tuple<int, int>> constrained_list;
 
-        for(int i=-1*(agent_size/2 + 1); i <= (agent_size/2 + 1); i++){
-            for(int j=-1*(agent_size/2 + 1); j <= (agent_size/2 +1); j++){
+        for(int i=-1*(3*agent_size); i <= (3*agent_size); i++){
+            for(int j=-1*(3*agent_size); j <= (3*agent_size); j++){
                 if(inMap(x_imp+i, y_imp + j)){
-                    constrained_list.push_back(make_tuple(x_imp +i, y_imp + j));
+                    if(pow(i,2) + pow(j,2) <= blocking_radius_sq*pow(agent_size,2))
+                        constrained_list.push_back(make_tuple(x_imp + i, y_imp + j)); 
                 }
             }
         }
@@ -298,7 +299,6 @@ class LowLevelPlanner{
         this->agent_id = id;
 
         buildConstraintTable(constraints);
-        
 
         Node start(x0, y0);
         start.h = computeHeuristic(start);
@@ -312,8 +312,13 @@ class LowLevelPlanner{
             this->open_queue.pop();
 
             if(curr_node.x == xf && curr_node.y == yf){
-               result = tracePath(curr_node);
-               return result;
+                bool check_constraint_flag = false;
+                if(curr_node.t <= this->max_time + t_eps)
+                    check_constraint_flag = true;
+                if(!check_constraint_flag){
+                    result = tracePath(curr_node);
+                    return result;
+                }
             }
 
             for(int dir=0; dir < 9; dir++){
@@ -332,19 +337,20 @@ class LowLevelPlanner{
                 }
 
                 if(lineOfSight(parent_of_curr, child)){
-                    child.parent = make_tuple(parent_of_curr.x, parent_of_curr.y, parent_of_curr.t);
                     child.h = computeHeuristic(child);
                     if(dir != 0){
+                        child.parent = make_tuple(parent_of_curr.x, parent_of_curr.y, parent_of_curr.t);
                         child.heading = atan2(child.y - parent_of_curr.y, child.x - parent_of_curr.x);
                         float parent_child_dist = computePathCost(parent_of_curr, child);
                         child.t = parent_of_curr.t + abs(child.heading - parent_of_curr.heading)/agent_ang_vel + parent_child_dist*this->planning_grid.resolution/agent_velocity;
                         child.g = parent_of_curr.g + parent_child_dist;
                         child.f = child.g + child.h;
                     }
-                    else
-                        child.t = curr_node.t + delta_t;
-                        child.g += 1;
+                    else{
+                        child.t = curr_node.t + t_eps;
+                        child.g += t_eps*agent_velocity/this->planning_grid.resolution;
                         child.f = child.g + child.h;
+                    }
                 }
                 else {
                     if(dir != 0){
@@ -354,10 +360,11 @@ class LowLevelPlanner{
                         child.g = curr_node.g + curr_child_dist;
                         child.f = child.g + child.h;
                     }
-                    else
-                        child.t = curr_node.t + delta_t;
-                        child.g += 1;
+                    else {
+                        child.t = curr_node.t + t_eps;
+                        child.g += t_eps*agent_velocity/this->planning_grid.resolution;
                         child.f = child.h + child.g;
+                    }
                 }
                 
                 if(isConstrained(child)){ continue; }

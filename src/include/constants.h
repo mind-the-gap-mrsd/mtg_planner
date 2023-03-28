@@ -1,9 +1,16 @@
 float agent_velocity = 0.8;
 float agent_ang_vel = 0.5;
-int agent_size = 5;
+// Agent size in grid cell units
+int agent_size = 3;
+// resolution in m/ grid cell
 float grid_resolution = 0.05;
-float x_eps = agent_size+1;
-float t_eps = (0.5*(3.141/(agent_ang_vel) + (x_eps)/agent_velocity)+1);
+// Threshold to detect collisions between paths
+float x_eps = agent_size + 1;
+// Max time duration to block out for a suspected collision
+float t_eps = (0.4*(3.141/(agent_ang_vel) + (4*agent_size)/agent_velocity));
+//Squared of blocking radius in grid cell units 
+float blocking_radius_sq = 4.0;
+// Discretization time step for planning
 float delta_t = 0.1;
 
 typedef tuple<int, int, float> TimedLoc;
