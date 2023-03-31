@@ -353,6 +353,7 @@ class LowLevelPlanner{
                     }
                 }
                 else {
+                    child.h = computeHeuristic(child);
                     if(dir != 0){
                         child.heading = atan2(child.y - curr_node.y, child.x - curr_node.x);
                         float curr_child_dist = computePathCost(curr_node, child);

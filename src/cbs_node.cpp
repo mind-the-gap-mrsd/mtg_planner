@@ -5,7 +5,10 @@
 #include<geometry_msgs/PoseStamped.h>
 #include<geometry_msgs/Pose.h>
 #include "mtg_messages/mtg_controller.h"
-#include "mtg_task_allocation/ta_out.h"
+#include "mtg_messages/controller_replan.h"
+#include "mtg_messages/ta_out.h"
+#include "mtg_messages/agent_route.h"
+#include "mtg_messages/task.h"
 #include<std_msgs/Bool.h>
 #include "include/HighLevelSearch.h"
 
@@ -23,15 +26,22 @@ class mapReceiveClass{
     ros::NodeHandle nh;
     ros::Subscriber sub;
     ros::Subscriber goal_set_subscriber;
-    ros::ServiceClient cl; 
+    ros::ServiceClient task_alloc_client;
+    ros::ServiceClient controller_client;
+    ros::ServiceServer replan_service; 
+    vector<queue<tuple<int, int>>> task_queues;
+    vector<tuple<int, int>> start_locs;
 
     mapReceiveClass(){
         ros::NodeHandle n;
         this->nh = n;
         this->sub = this->nh.subscribe("/sim_map", 10, &mapReceiveClass::mapReceiveCallback, this);
-        this->cl = this->nh.serviceClient<mtg_task_allocation::ta_out>("/ta_out");
-        this->goal_set_subscriber = this->nh.subscribe<std_msgs::Bool>("goals_set", 10, &mapReceiveClass::goal_set_callback, this);
+        this->task_alloc_client = this->nh.serviceClient<mtg_messages::ta_out>("/ta_out");
+        this->goal_set_subscriber = this->nh.subscribe<std_msgs::Bool>("goals_set", 10, &mapReceiveClass::goalSetCallback, this);
+        this->controller_client = this->nh.serviceClient<mtg_messages::mtg_controller>("/mtg_controller/controller/");
+        this->replan_service = this->nh.advertiseService("/mtg_planner/controller_replan/", &updateTaskQueue);
     }
+
     void mapReceiveCallback(const nav_msgs::OccupancyGrid& recvOG){
     
         nav_msgs::MapMetaData meta = recvOG.info;
@@ -48,34 +58,67 @@ class mapReceiveClass{
         this->planningGrid = grid;
 
     }
-    void goal_set_callback(const std_msgs::Bool::ConstPtr& goal_set){
+    void goalSetCallback(const std_msgs::Bool::ConstPtr& goal_set){
         std::cout << "callback called" << std::endl;
-        int occupied = 0;
-        int free = 0;
-        vector<vector<TimedLoc>> output;
-        vector<nav_msgs::Path> paths_to_send;
-        vector<string> agent_names;
-        if(!this->planningGrid.grid.empty()){
-            output = this->findPaths();
-            this->logOutput(output);
-            paths_to_send = this->gridToWorldTransformAnyAngle(output, 0.25);
-            agent_names = this->createAgentNames(output);
-            vector<int64_t> goal_ids(agent_names.size(), 1);
-            vector<int64_t> goal_types(agent_names.size(), 1);
-
-            ros::ServiceClient client = this->nh.serviceClient<mtg_messages::mtg_controller>("/mtg_controller/controller/");
-
-            mtg_messages::mtg_controller call;
-            call.request.stop_controller = false;
-            call.request.agent_names = agent_names;
-            call.request.paths = paths_to_send;
-            call.request.goal_id = goal_ids;
-            call.request.goal_type = goal_types;
-
-            client.call(call);
-
-        }
+        this->task_queues.clear();
+        this->start_locs.clear();
+        createTaskQueues();
+        sendPaths();        
     }
+
+    void createTaskQueues(){
+        
+        if(this->planningGrid.height == 0)
+            return;
+
+        mtg_messages::ta_out call;
+        call.request.req = "please";
+        this->task_alloc_client.call(call);
+        while(!call.response.agent_routes.size()){cout << "Waiting for data" << endl;}
+
+        cout << "Num of agents: " << call.response.agent_routes.size() << endl;
+
+        for(int i=0; i < call.response.agent_routes.size(); i++){
+            mtg_messages::agent_route agent_route_i  = call.response.agent_routes.at(i);
+            vector<mtg_messages::task> agent_task_i = agent_route_i.goal_list;
+            queue<tuple<int, int>> agent_i_queue;
+            for(int j=0; j < agent_task_i.size(); j++){
+                int x_i_j = (int)(agent_task_i.at(j).x/this->planningGrid.resolution);
+                int y_i_j = this->planningGrid.height - (int)(agent_task_i.at(j).y/this->planningGrid.resolution);
+                if(j == 0){
+                    this->start_locs.push_back(make_tuple(x_i_j, y_i_j));
+
+                }
+                else {
+                    agent_i_queue.push(make_tuple(x_i_j, y_i_j));
+                }     
+            }
+            this->task_queues.push_back(agent_i_queue);
+        }
+
+    }
+
+    void updateTaskQueue(mtg_messages::controller_replan::Request& controller_req,
+                         mtg_messages::controller_replan::Response& controller_resp){
+        // The request should contain IDs, poses and reached or not
+        vector<int> goal_status_flags = controller_req.goal_status;
+        // Go through list -> if reached, then set current taskQueue[0] as start_locs and pop queue
+        for(int i=0; i < goal_status_flags.size(); i++){
+            int px = (int)(controller_req.agent_locations.at(i).position.x/this->planningGrid.resolution);
+            int py = this->planningGrid.height - (int)(controller_req.agent_locations.at(i).position.y/this->planningGrid.resolution);
+            this->start_locs[i] = make_tuple(px, py);
+            if(goal_status_flags.at(i) == 1){
+                this->task_queues.at(i).pop();
+                if(this->task_queues.empty()){
+                    this->task_queues.at(i).push(make_tuple(px, py));
+                }
+            }
+        }
+        controller_resp.done_mf = true;
+        sendPaths();
+
+    }
+    
     vector<vector<TimedLoc>> findPaths(){
 
         vector<vector<TimedLoc>> results;
@@ -84,48 +127,17 @@ class mapReceiveClass{
             return results;
 
         vector<Task> inputTasks;
-        mtg_task_allocation::ta_out call;
-        call.request.req = "please";
-        this->cl.call(call);
-        while(!call.response.agent_numbers.size()){cout << "Waiting for data" << endl;}
-
-        cout << "Num of agents: " << call.response.agent_numbers.size() << endl;
-
-        for(int i=0; i < call.response.agent_start.size(); i++){
-            int sx = (int)(call.response.agent_start[i].position.x/this->planningGrid.resolution);
-            int sy = this->planningGrid.height - (int)(call.response.agent_start[i].position.y/this->planningGrid.resolution);
-            int gx = (int)(call.response.agent_goals[i].position.x/this->planningGrid.resolution);
-            int gy = this->planningGrid.height - (int)(call.response.agent_goals[i].position.y/this->planningGrid.resolution);
-            cout << sx << ", " << sy << ", " << gx << ", " << gy << endl;
+        for(int i=0; i < this->start_locs.size(); i++){
+            int sx = get<0>(this->start_locs.at(i));
+            int sy = get<1>(this->start_locs.at(i));
+            int gx = get<0>(this->task_queues.at(i).front());
+            int gy = get<1>(this->task_queues.at(i).front());
             inputTasks.push_back(make_tuple(sx, sy, gx, gy));
         }
 
         LowLevelPlanner plannerObject(this->planningGrid);
         results = cbsSearch(inputTasks, plannerObject);
         return results;
-    }
-    vector<nav_msgs::Path> gridToWorldTransform(vector<vector<TimedLoc>> results){
-
-
-        nav_msgs::Path dummy_path;
-        vector<nav_msgs::Path> world_result(results.size(), dummy_path);
-        
-        for(int i=0; i < results.size(); i++){
-            vector<TimedLoc> agent_grid_coords = results.at(i);
-            geometry_msgs::PoseStamped dummy;
-            vector<geometry_msgs::PoseStamped> agent_world_coords(agent_grid_coords.size(), dummy);
-
-            for(int j=0; j < agent_grid_coords.size(); j++){
-                float x = this->planningGrid.resolution*get<0>(agent_grid_coords.at(j));
-                float y = this->planningGrid.resolution*(this->planningGrid.height - get<1>(agent_grid_coords.at(j)));
-                agent_world_coords[j].pose.position.x = x;
-                agent_world_coords[j].pose.position.y = y;
-
-            }
-
-            world_result[i].poses = agent_world_coords;
-        }
-        return world_result;
     }
 
     vector<nav_msgs::Path> gridToWorldTransformAnyAngle(vector<vector<TimedLoc>> results, float timestep){
@@ -139,6 +151,10 @@ class mapReceiveClass{
             float max_time = get<2>(agent_grid_coords.back());
             geometry_msgs::PoseStamped dummy;
             vector<geometry_msgs::PoseStamped> agent_world_coords;
+
+            if(get<0>(agent_grid_coords.at(0)) == get<0>(agent_grid_coords.back()) && get<1>(agent_grid_coords.at(0)) == get<1>(agent_grid_coords.back()))
+                continue;
+
 
             float t = 0;
             while(t <= max_time + timestep){
@@ -169,6 +185,33 @@ class mapReceiveClass{
         return agent_name_list;
     }
 
+    void sendPaths(){
+
+        vector<vector<TimedLoc>> output;
+        vector<nav_msgs::Path> paths_to_send;
+        vector<string> agent_names;
+
+        if(!this->planningGrid.grid.empty()){
+            // Finding paths and logging output
+            output = this->findPaths();
+            this->logOutput(output);
+            paths_to_send = this->gridToWorldTransformAnyAngle(output, 0.25);
+            agent_names = this->createAgentNames(output);
+            vector<int64_t> goal_ids(agent_names.size(), 1);
+            vector<int64_t> goal_types(agent_names.size(), 1);
+            
+            // Calling controller with path data
+            mtg_messages::mtg_controller call;
+            call.request.stop_controller = false;
+            call.request.agent_names = agent_names;
+            call.request.paths = paths_to_send;
+            call.request.goal_id = goal_ids;
+            call.request.goal_type = goal_types;
+            this->controller_client.call(call);
+        }
+        return;
+    }
+
 
     void logOutput(vector<vector<TimedLoc>> results){
         if(results.empty()) {
@@ -193,6 +236,7 @@ int main(int argc, char **argv){
     ros::NodeHandle n;
 
     mapReceiveClass mpC;
+
     ros::spin();
 
 }

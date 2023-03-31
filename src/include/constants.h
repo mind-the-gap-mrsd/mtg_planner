@@ -7,7 +7,7 @@ float grid_resolution = 0.05;
 // Threshold to detect collisions between paths
 float x_eps = agent_size + 1;
 // Max time duration to block out for a suspected collision
-float t_eps = (0.4*(3.141/(agent_ang_vel) + (4*agent_size)/agent_velocity));
+float t_eps = (0.4*(3.141/(agent_ang_vel) + (4*agent_size*grid_resolution)/agent_velocity));
 //Squared of blocking radius in grid cell units 
 float blocking_radius_sq = 4.0;
 // Discretization time step for planning
