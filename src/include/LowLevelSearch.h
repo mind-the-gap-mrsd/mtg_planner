@@ -347,8 +347,8 @@ class LowLevelPlanner{
                         child.f = child.g + child.h;
                     }
                     else{
-                        child.t = curr_node.t + t_eps;
-                        child.g += t_eps*agent_velocity/this->planning_grid.resolution;
+                        child.t = curr_node.t + 1;
+                        child.g += agent_velocity/this->planning_grid.resolution;
                         child.f = child.g + child.h;
                     }
                 }
@@ -362,8 +362,8 @@ class LowLevelPlanner{
                         child.f = child.g + child.h;
                     }
                     else {
-                        child.t = curr_node.t + t_eps;
-                        child.g += t_eps*agent_velocity/this->planning_grid.resolution;
+                        child.t = curr_node.t + 1;
+                        child.g += agent_velocity/this->planning_grid.resolution;
                         child.f = child.h + child.g;
                     }
                 }

@@ -126,7 +126,7 @@ vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerOb
     open_queue.push(root);
 
     while(!open_queue.empty()){
-        cout << "Number of Nodes: " << open_queue.size() << endl;
+        // cout << "Number of Nodes: " << open_queue.size() << endl;
         CTNode current_ct_node = open_queue.top();
         open_queue.pop();
 

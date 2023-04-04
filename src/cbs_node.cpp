@@ -31,6 +31,7 @@ class mapReceiveClass{
     ros::ServiceServer replan_service; 
     vector<queue<tuple<int, int>>> task_queues;
     vector<tuple<int, int>> start_locs;
+    bool replan_flag{false};
 
     mapReceiveClass(){
         ros::NodeHandle n;
@@ -39,7 +40,7 @@ class mapReceiveClass{
         this->task_alloc_client = this->nh.serviceClient<mtg_messages::ta_out>("/ta_out");
         this->goal_set_subscriber = this->nh.subscribe<std_msgs::Bool>("goals_set", 10, &mapReceiveClass::goalSetCallback, this);
         this->controller_client = this->nh.serviceClient<mtg_messages::mtg_controller>("/mtg_controller/controller/");
-        this->replan_service = this->nh.advertiseService("/mtg_planner/controller_replan/", &updateTaskQueue);
+        this->replan_service = this->nh.advertiseService("/mtg_planner/controller_replan", &mapReceiveClass::updateTaskQueue, this);
     }
 
     void mapReceiveCallback(const nav_msgs::OccupancyGrid& recvOG){
@@ -93,12 +94,17 @@ class mapReceiveClass{
                     agent_i_queue.push(make_tuple(x_i_j, y_i_j));
                 }     
             }
+            if(agent_task_i.size()==1){
+                int x_i_j = (int)(agent_task_i.at(0).x/this->planningGrid.resolution);
+                int y_i_j = this->planningGrid.height - (int)(agent_task_i.at(0).y/this->planningGrid.resolution);
+                agent_i_queue.push(make_tuple(x_i_j, y_i_j));
+            }
             this->task_queues.push_back(agent_i_queue);
         }
 
     }
 
-    void updateTaskQueue(mtg_messages::controller_replan::Request& controller_req,
+    bool updateTaskQueue(mtg_messages::controller_replan::Request& controller_req,
                          mtg_messages::controller_replan::Response& controller_resp){
         // The request should contain IDs, poses and reached or not
         vector<int> goal_status_flags = controller_req.goal_status;
@@ -109,13 +115,15 @@ class mapReceiveClass{
             this->start_locs[i] = make_tuple(px, py);
             if(goal_status_flags.at(i) == 1){
                 this->task_queues.at(i).pop();
-                if(this->task_queues.empty()){
+                if(this->task_queues.at(i).empty()){
                     this->task_queues.at(i).push(make_tuple(px, py));
                 }
             }
         }
         controller_resp.done_mf = true;
-        sendPaths();
+        cout << "Queues updated" << endl;
+        this->replan_flag = true;
+        return true;
 
     }
     
@@ -133,6 +141,7 @@ class mapReceiveClass{
             int gx = get<0>(this->task_queues.at(i).front());
             int gy = get<1>(this->task_queues.at(i).front());
             inputTasks.push_back(make_tuple(sx, sy, gx, gy));
+            cout << "Agent: " << i << "Start: " << sx << ", " << sy << " Goals: " << gx << ", " << gy << endl; 
         }
 
         LowLevelPlanner plannerObject(this->planningGrid);
@@ -195,7 +204,7 @@ class mapReceiveClass{
             // Finding paths and logging output
             output = this->findPaths();
             this->logOutput(output);
-            paths_to_send = this->gridToWorldTransformAnyAngle(output, 0.25);
+            paths_to_send = this->gridToWorldTransformAnyAngle(output, 0.1);
             agent_names = this->createAgentNames(output);
             vector<int64_t> goal_ids(agent_names.size(), 1);
             vector<int64_t> goal_types(agent_names.size(), 1);
@@ -237,6 +246,15 @@ int main(int argc, char **argv){
 
     mapReceiveClass mpC;
 
-    ros::spin();
+    while(1){
+        if(mpC.replan_flag){
+            mpC.replan_flag = false;
+            cout << "Calling replanning of paths" << endl;
+            mpC.sendPaths();
+        }
+        ros::spinOnce();
+    }
+
+    // ros::spin();
 
 }
