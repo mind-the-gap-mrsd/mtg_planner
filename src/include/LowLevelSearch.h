@@ -312,13 +312,13 @@ class LowLevelPlanner{
             this->open_queue.pop();
 
             if(curr_node.x == xf && curr_node.y == yf){
-                bool check_constraint_flag = false;
-                if(curr_node.t <= this->max_time + t_eps)
-                    check_constraint_flag = true;
-                if(!check_constraint_flag){
+                // bool check_constraint_flag = false;
+                // if(curr_node.t <= this->max_time + t_eps)
+                    // check_constraint_flag = true;
+                // if(!check_constraint_flag){
                     result = tracePath(curr_node);
                     return result;
-                }
+                // }
             }
 
             for(int dir=0; dir < 9; dir++){
@@ -343,12 +343,14 @@ class LowLevelPlanner{
                         child.heading = atan2(child.y - parent_of_curr.y, child.x - parent_of_curr.x);
                         float parent_child_dist = computePathCost(parent_of_curr, child);
                         child.t = parent_of_curr.t + abs(child.heading - parent_of_curr.heading)/agent_ang_vel + parent_child_dist*this->planning_grid.resolution/agent_velocity;
-                        child.g = parent_of_curr.g + parent_child_dist;
+                        // child.g = parent_of_curr.g + parent_child_dist;
+                        child.g = child.t;
                         child.f = child.g + child.h;
                     }
                     else{
-                        child.t = curr_node.t + 1;
-                        child.g += agent_velocity/this->planning_grid.resolution;
+                        child.t = curr_node.t + t_eps;
+                        // child.g += 1 + 0*agent_velocity/this->planning_grid.resolution;
+                        child.g = child.t;
                         child.f = child.g + child.h;
                     }
                 }
@@ -358,12 +360,14 @@ class LowLevelPlanner{
                         child.heading = atan2(child.y - curr_node.y, child.x - curr_node.x);
                         float curr_child_dist = computePathCost(curr_node, child);
                         child.t = curr_node.t + abs(child.heading-curr_node.heading)/agent_ang_vel + curr_child_dist*this->planning_grid.resolution/agent_velocity;
-                        child.g = curr_node.g + curr_child_dist;
+                        // child.g = curr_node.g + curr_child_dist;
+                        child.g = child.t;
                         child.f = child.g + child.h;
                     }
                     else {
-                        child.t = curr_node.t + 1;
-                        child.g += agent_velocity/this->planning_grid.resolution;
+                        child.t = curr_node.t + t_eps;
+                        // child.g += 1 + 0*agent_velocity/this->planning_grid.resolution;
+                        child.g = child.t;
                         child.f = child.h + child.g;
                     }
                 }

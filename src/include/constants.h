@@ -1,5 +1,5 @@
 float agent_velocity = 0.8;
-float agent_ang_vel = 0.5;
+float agent_ang_vel = 1.0;
 // Agent size in grid cell units
 int agent_size = 3;
 // resolution in m/ grid cell

@@ -204,7 +204,7 @@ class mapReceiveClass{
             // Finding paths and logging output
             output = this->findPaths();
             this->logOutput(output);
-            paths_to_send = this->gridToWorldTransformAnyAngle(output, 0.1);
+            paths_to_send = this->gridToWorldTransformAnyAngle(output, 0.5);
             agent_names = this->createAgentNames(output);
             vector<int64_t> goal_ids(agent_names.size(), 1);
             vector<int64_t> goal_types(agent_names.size(), 1);
