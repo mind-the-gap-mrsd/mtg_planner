@@ -1,15 +1,16 @@
-#include<ros/ros.h>
-#include<nav_msgs/OccupancyGrid.h>
-#include<nav_msgs/MapMetaData.h>
-#include<nav_msgs/Path.h>
-#include<geometry_msgs/PoseStamped.h>
-#include<geometry_msgs/Pose.h>
+#include <ros/ros.h>
+#include <nav_msgs/OccupancyGrid.h>
+#include <nav_msgs/MapMetaData.h>
+#include <nav_msgs/Path.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Pose.h>
 #include "mtg_messages/mtg_controller.h"
 #include "mtg_messages/controller_replan.h"
 #include "mtg_messages/ta_out.h"
 #include "mtg_messages/agent_route.h"
 #include "mtg_messages/task.h"
-#include<std_msgs/Bool.h>
+#include <std_msgs/Bool.h>
+#include <signal.h>
 #include "include/HighLevelSearch.h"
 
 using namespace std;
@@ -28,9 +29,11 @@ class mapReceiveClass{
     ros::Subscriber goal_set_subscriber;
     ros::ServiceClient task_alloc_client;
     ros::ServiceClient controller_client;
-    ros::ServiceServer replan_service; 
+    ros::ServiceServer replan_service;
+    map<int, ros::Publisher> rviz_path_pubs; 
     vector<queue<tuple<int, int>>> task_queues;
     vector<tuple<int, int>> start_locs;
+    vector<nav_msgs::Path> agent_current_paths;
     bool replan_flag{false};
 
     mapReceiveClass(){
@@ -78,6 +81,10 @@ class mapReceiveClass{
         while(!call.response.agent_routes.size()){cout << "Waiting for data" << endl;}
 
         cout << "Num of agents: " << call.response.agent_routes.size() << endl;
+
+        for(int i=0; i < call.response.agent_routes.size(); i++){
+            this->rviz_path_pubs[i] = this->nh.advertise<nav_msgs::Path>(std::string("/mtg_planner/agent") + to_string(i), 1000);
+        }
 
         for(int i=0; i < call.response.agent_routes.size(); i++){
             mtg_messages::agent_route agent_route_i  = call.response.agent_routes.at(i);
@@ -161,9 +168,11 @@ class mapReceiveClass{
             geometry_msgs::PoseStamped dummy;
             vector<geometry_msgs::PoseStamped> agent_world_coords;
 
-            if(get<0>(agent_grid_coords.at(0)) == get<0>(agent_grid_coords.back()) && get<1>(agent_grid_coords.at(0)) == get<1>(agent_grid_coords.back()))
-                continue;
-
+            if(get<0>(agent_grid_coords.at(0)) == get<0>(agent_grid_coords.back())&& get<1>(agent_grid_coords.at(0)) == get<1>(agent_grid_coords.back())) {
+                if(agent_grid_coords.size() <= 2)
+                    continue;
+            }
+                
 
             float t = 0;
             while(t <= max_time + timestep){
@@ -181,6 +190,7 @@ class mapReceiveClass{
             }
 
             world_result[i].poses = agent_world_coords;
+            world_result[i].header.frame_id = "/map";
         }
         return world_result;
     }
@@ -205,6 +215,7 @@ class mapReceiveClass{
             output = this->findPaths();
             this->logOutput(output);
             paths_to_send = this->gridToWorldTransformAnyAngle(output, 0.5);
+            this->agent_current_paths = paths_to_send;
             agent_names = this->createAgentNames(output);
             vector<int64_t> goal_ids(agent_names.size(), 1);
             vector<int64_t> goal_types(agent_names.size(), 1);
@@ -217,6 +228,10 @@ class mapReceiveClass{
             call.request.goal_id = goal_ids;
             call.request.goal_type = goal_types;
             this->controller_client.call(call);
+
+            // for(int i= 0; i < paths_to_send.size(); i++){
+            //     this->rviz_path_pubs[i].publish(paths_to_send.at(i));
+            // }
         }
         return;
     }
@@ -237,6 +252,11 @@ class mapReceiveClass{
     }
 };
 
+void cleanExitCallback(int signum){
+    cout << "Caught exit signal, terminating planner" << endl;
+    exit(signum);
+}
+
 
 
 int main(int argc, char **argv){
@@ -245,6 +265,7 @@ int main(int argc, char **argv){
     ros::NodeHandle n;
 
     mapReceiveClass mpC;
+    signal(SIGINT, cleanExitCallback);
 
     while(1){
         if(mpC.replan_flag){
@@ -252,9 +273,12 @@ int main(int argc, char **argv){
             cout << "Calling replanning of paths" << endl;
             mpC.sendPaths();
         }
+        if(mpC.agent_current_paths.size() > 0){
+            for(int i=0; i < mpC.agent_current_paths.size(); i++){
+                mpC.rviz_path_pubs[i].publish(mpC.agent_current_paths.at(i));
+            }
+        }
         ros::spinOnce();
+        sleep(0.01);
     }
-
-    // ros::spin();
-
 }

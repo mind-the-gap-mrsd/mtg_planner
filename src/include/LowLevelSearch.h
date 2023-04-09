@@ -1,32 +1,8 @@
-/**
- * METHOD: Build constraint table for checking collisions
- * INPUTS: Vector of constraints -> (int agent_number, float pair Loc, float time_imp)
- * 
- * 1. If current agent != agent_number -> continue
- * 
- * 2. Create a map from pair of float time ranges to vector of int pairs blocked
- *    during that time duration. Vector of int pairs comes from taking a two agent
- *    sized square about point of impact and blocking all cells within it for a duration
- *    (t_imp - eps_t, t_imp + eps_t)
- * 
- *  eps_t -> time taken for agent to cover two body lengths - 2*agent_size/agent_vel
-*/
-
-/**
- * METHOD: Check if current location and time of agent is constrained from the 
- * built constraint table
- * 
- * INPUTS: Node being considered, constraint table
- * 
- * 1. Iterate over keys - if node.time is within the range then check if node
- *  location in the vector list. If so, return true, else false.
-*/
-
-#include<cmath>
-#include<tuple>
-#include<algorithm>
-#include<queue>
-#include<map>
+#include <cmath>
+#include <tuple>
+#include <algorithm>
+#include <queue>
+#include <map>
 #include "NavGrid.h"
 #include "constants.h"
 using namespace std;
@@ -96,6 +72,7 @@ class LowLevelPlanner{
     float max_time;
     //  Movement directions
     int move[9][2] = {{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}, {-1,-1}, {1,-1}, {-1,1}, {1,1}};
+    // int move[5][2] = {{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}};
     //STL implementations of 
     priority_queue<Node, vector<Node>, NodeComparator> open_queue;
     map<TimedLoc, Node> closed_list;
@@ -135,16 +112,30 @@ class LowLevelPlanner{
         return true;
     }
 
-    bool hitsObstacle(int pos_x, int pos_y){
-        for(int i=-1*(agent_size/2 + 1); i <= (agent_size/2 + 1); i++){
-            for(int j=-1*(agent_size/2 + 1); j <= (agent_size/2 + 1); j++){
-                if(inMap(pos_x +i, pos_y + j)){
-                    if(this->planning_grid.grid[pos_y + j][pos_x + i] == 1){
-                        return true;
+    bool hitsObstacle(int pos_x, int pos_y, char mdf){
+
+        if(mdf == 'u'){
+            for(int i=-1*(agent_size); i < (agent_size); i++){
+                for(int j=-1*(agent_size); j < (agent_size); j++){
+                    if(inMap(pos_x +i, pos_y + j)){
+                        if(pow(i,2) + pow(j,2) <= pow(agent_size + 1,2)){
+                            if(this->planning_grid.grid[pos_y + j][pos_x + i] == 1){
+                                return true;
+                            }
+                        }
                     }
                 }
             }
+            return false;
         }
+
+        if(mdf == 'd'){
+            if(this->planning_grid.grid[pos_y][pos_x] == 1)
+                return true;
+            else
+                return false;
+        }
+
         return false;
     }
 
@@ -166,9 +157,22 @@ class LowLevelPlanner{
         return constrained_list;
     }
 
-    // Constraint structure - (agent ID, float pair of location, float time)
-
     void buildConstraintTable(vector<Constraint> constraints){
+    /**
+     * METHOD: Build constraint table for checking collisions
+     * INPUTS: Vector of constraints -> (int agent_number, float pair Loc, float time_imp)
+     * 
+     * 1. If current agent != agent_number -> continue
+     * 
+     * 2. Create a map from pair of float time ranges to vector of int pairs blocked
+     *    during that time duration. Vector of int pairs comes from taking a two agent
+     *    sized square about point of impact and blocking all cells within it for a duration
+     *    (t_imp - eps_t, t_imp + eps_t)
+     * 
+     *  eps_t -> time taken for agent to cover two body lengths - 2*agent_size*resolution/agent_vel
+     * 
+     * 3. Constraint structure - (agent ID, float pair of location, float time)
+    */
         
         if(constraints.empty()) { return; }
         this->constraint_table.clear();
@@ -190,6 +194,16 @@ class LowLevelPlanner{
     }
 
     bool isConstrained(Node n){
+    /**
+     * METHOD: Check if current location and time of agent is constrained from the 
+     * built constraint table
+     * 
+     * INPUTS: Node being considered, constraint table
+     * 
+     * 1. Iterate over keys - if node.time is within the range then check if node
+     *  location in the vector list. If so, return true, else false.
+    */
+
 
         if(this->constraint_table.empty()) { return false; }
 
@@ -257,7 +271,7 @@ class LowLevelPlanner{
             e = e + b;
             }
             if(inMap(x, y)){
-                if(hitsObstacle(x, y)) {return false;}
+                if(hitsObstacle(x, y, map_dilate_flag)) {return false;}
                 Node intermediate(x, y, node1);
                 intermediate.t = node1.t + computePathCost(intermediate, node1)*this->planning_grid.resolution/agent_velocity + abs(node1.heading - node2.heading)/agent_ang_vel; 
                 if(isConstrained(intermediate)) {return false;}
@@ -306,19 +320,37 @@ class LowLevelPlanner{
         open_queue.push(start);
 
         vector<TimedLoc> result;
+
+        if(hitsObstacle(x0, y0, map_dilate_flag)){
+            cout << "Start point for Agent " << id << " is too close to obstacles" << endl;
+            return result;
+        }
+
+        if(hitsObstacle(xf, yf, map_dilate_flag)){
+            cout << "End point for Agent " << id << " is too close to obstacles" << endl;
+            return result;
+        }
         
         while(!this->open_queue.empty()){
             Node curr_node = this->open_queue.top();
             this->open_queue.pop();
 
             if(curr_node.x == xf && curr_node.y == yf){
-                // bool check_constraint_flag = false;
-                // if(curr_node.t <= this->max_time + t_eps)
-                    // check_constraint_flag = true;
-                // if(!check_constraint_flag){
+                // TODO: Logic to check if goal is constrained in future states before returning
+                bool goal_is_constrained = false;
+
+                Node n(curr_node.x, curr_node.y, curr_node);
+                while(n.t <= this->max_time + t_eps){
+                    if(isConstrained(n)){
+                        goal_is_constrained = true;
+                        break;
+                    }
+                    n.t += t_eps;
+                }
+                if(!goal_is_constrained){ 
                     result = tracePath(curr_node);
                     return result;
-                // }
+                }
             }
 
             for(int dir=0; dir < 9; dir++){
@@ -326,8 +358,7 @@ class LowLevelPlanner{
                 int new_pos_y = curr_node.y + this->move[dir][1];
 
                 if(!inMap(new_pos_x, new_pos_y)) { continue; }
-                // if(this->planning_grid.grid[new_pos_y][new_pos_x] == 1){continue;}
-                if(hitsObstacle(new_pos_x, new_pos_y)) { continue; }
+                if(hitsObstacle(new_pos_x, new_pos_y, map_dilate_flag)) { continue; }
 
                 Node child(new_pos_x, new_pos_y, curr_node);
 
@@ -348,7 +379,7 @@ class LowLevelPlanner{
                         child.f = child.g + child.h;
                     }
                     else{
-                        child.t = curr_node.t + t_eps;
+                        child.t = curr_node.t + 0.5*t_eps;
                         // child.g += 1 + 0*agent_velocity/this->planning_grid.resolution;
                         child.g = child.t;
                         child.f = child.g + child.h;
@@ -365,7 +396,7 @@ class LowLevelPlanner{
                         child.f = child.g + child.h;
                     }
                     else {
-                        child.t = curr_node.t + t_eps;
+                        child.t = curr_node.t + 0.5*t_eps;
                         // child.g += 1 + 0*agent_velocity/this->planning_grid.resolution;
                         child.g = child.t;
                         child.f = child.h + child.g;
