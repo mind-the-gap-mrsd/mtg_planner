@@ -33,6 +33,7 @@ class mapReceiveClass{
     map<int, ros::Publisher> rviz_path_pubs; 
     vector<queue<tuple<int, int>>> task_queues;
     vector<tuple<int, int>> start_locs;
+    vector<tuple<float, float>> start_locs_float;
     vector<nav_msgs::Path> agent_current_paths;
     bool replan_flag{false};
 
@@ -93,8 +94,11 @@ class mapReceiveClass{
             for(int j=0; j < agent_task_i.size(); j++){
                 int x_i_j = (int)(agent_task_i.at(j).x/this->planningGrid.resolution);
                 int y_i_j = this->planningGrid.height - (int)(agent_task_i.at(j).y/this->planningGrid.resolution);
+                float f_x_i_j = agent_task_i.at(j).x;
+                float f_y_i_j = agent_task_i.at(j).y;
                 if(j == 0){
                     this->start_locs.push_back(make_tuple(x_i_j, y_i_j));
+                    this->start_locs_float.push_back(make_tuple(f_x_i_j, f_y_i_j));
 
                 }
                 else {
@@ -118,8 +122,12 @@ class mapReceiveClass{
         // Go through list -> if reached, then set current taskQueue[0] as start_locs and pop queue
         for(int i=0; i < goal_status_flags.size(); i++){
             int px = (int)(controller_req.agent_locations.at(i).position.x/this->planningGrid.resolution);
-            int py = this->planningGrid.height - (int)(controller_req.agent_locations.at(i).position.y/this->planningGrid.resolution);
+            int py = (int)this->planningGrid.height - (controller_req.agent_locations.at(i).position.y/this->planningGrid.resolution);
+            float fx = controller_req.agent_locations.at(i).position.x;
+            float fy = controller_req.agent_locations.at(i).position.y;
             this->start_locs[i] = make_tuple(px, py);
+            this->start_locs_float[i] = make_tuple(fx, fy);
+            
             if(goal_status_flags.at(i) == 1){
                 this->task_queues.at(i).pop();
                 if(this->task_queues.at(i).empty()){
@@ -177,7 +185,7 @@ class mapReceiveClass{
             float t = 0;
             while(t <= max_time + timestep){
                 tuple<float, float, float> loc_agent_i = getLoc(agent_grid_coords, t);
-                if(get<0>(loc_agent_i) == get<0>(getLoc(agent_grid_coords, t - timestep)) && get<1>(loc_agent_i) == get<1>(getLoc(agent_grid_coords, t - timestep))){
+                if(t > 0 && get<0>(loc_agent_i) == get<0>(getLoc(agent_grid_coords, t - timestep)) && get<1>(loc_agent_i) == get<1>(getLoc(agent_grid_coords, t - timestep))){
                     t += timestep;
                     continue;
                 }
@@ -188,6 +196,9 @@ class mapReceiveClass{
                 agent_world_coords[agent_world_coords.size()-1].pose.position.y = y;
                 t += timestep;
             }
+
+            agent_world_coords[0].pose.position.x = get<0>(this->start_locs_float[i]);
+            agent_world_coords[0].pose.position.y = get<1>(this->start_locs_float[i]);
 
             world_result[i].poses = agent_world_coords;
             world_result[i].header.frame_id = "map";

@@ -115,10 +115,10 @@ class LowLevelPlanner{
     bool hitsObstacle(int pos_x, int pos_y, char mdf){
 
         if(mdf == 'u'){
-            for(int i=-1*(agent_size); i < (agent_size); i++){
-                for(int j=-1*(agent_size); j < (agent_size); j++){
+            for(int i=-2*(agent_size); i < 2*(agent_size); i++){
+                for(int j=-2*(agent_size); j < 2*(agent_size); j++){
                     if(inMap(pos_x +i, pos_y + j)){
-                        if(pow(i,2) + pow(j,2) <= pow(agent_size + 1,2)){
+                        if(pow(i,2) + pow(j,2) < pow(agent_size/2.0 + 1,2)){
                             if(this->planning_grid.grid[pos_y + j][pos_x + i] == 1){
                                 return true;
                             }
@@ -321,10 +321,10 @@ class LowLevelPlanner{
 
         vector<TimedLoc> result;
 
-        if(hitsObstacle(x0, y0, map_dilate_flag)){
-            cout << "Start point for Agent " << id << " is too close to obstacles" << endl;
-            return result;
-        }
+        // if(hitsObstacle(x0, y0, map_dilate_flag)){
+        //     cout << "Start point for Agent " << id << " is too close to obstacles" << endl;
+        //     return result;
+        // }
 
         if(hitsObstacle(xf, yf, map_dilate_flag)){
             cout << "End point for Agent " << id << " is too close to obstacles" << endl;
