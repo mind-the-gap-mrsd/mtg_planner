@@ -71,8 +71,8 @@ class LowLevelPlanner{
     NavGrid planning_grid;
     float max_time;
     //  Movement directions
-    int move[9][2] = {{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}, {-1,-1}, {1,-1}, {-1,1}, {1,1}};
-    // int move[5][2] = {{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}};
+    // int move[9][2] = {{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}, {-1,-1}, {1,-1}, {-1,1}, {1,1}};
+    int move[5][2] = {{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}};
     //STL implementations of 
     priority_queue<Node, vector<Node>, NodeComparator> open_queue;
     map<TimedLoc, Node> closed_list;
@@ -118,7 +118,7 @@ class LowLevelPlanner{
             for(int i=-2*(agent_size); i < 2*(agent_size); i++){
                 for(int j=-2*(agent_size); j < 2*(agent_size); j++){
                     if(inMap(pos_x +i, pos_y + j)){
-                        if(pow(i,2) + pow(j,2) < pow(agent_size/2.0 + 1,2)){
+                        if(pow(i,2) + pow(j,2) <= pow(inflation_radius,2)){
                             if(this->planning_grid.grid[pos_y + j][pos_x + i] == 1){
                                 return true;
                             }
@@ -353,7 +353,7 @@ class LowLevelPlanner{
                 }
             }
 
-            for(int dir=0; dir < 9; dir++){
+            for(int dir=0; dir < 5; dir++){
                 int new_pos_x = curr_node.x + this->move[dir][0];
                 int new_pos_y = curr_node.y + this->move[dir][1];
 

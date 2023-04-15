@@ -76,6 +76,10 @@ class mapReceiveClass{
         if(this->planningGrid.height == 0)
             return;
 
+        this->task_queues.clear();
+        this->start_locs.clear();
+        this->start_locs_float.clear();
+
         mtg_messages::ta_out call;
         call.request.req = "please";
         this->task_alloc_client.call(call);
@@ -102,10 +106,15 @@ class mapReceiveClass{
 
                 }
                 else {
+                    // To ensure that planning happens for susbequent goals even if agent starts at a goal location
+                    if(x_i_j == get<0>(this->start_locs[i]) and y_i_j == get<1>(this->start_locs[i])){
+                        if(agent_task_i.size() > 2)
+                            continue;
+                    }
                     agent_i_queue.push(make_tuple(x_i_j, y_i_j));
                 }     
             }
-            if(agent_task_i.size()==1){
+            if(agent_task_i.size() == 1){
                 int x_i_j = (int)(agent_task_i.at(0).x/this->planningGrid.resolution);
                 int y_i_j = this->planningGrid.height - (int)(agent_task_i.at(0).y/this->planningGrid.resolution);
                 agent_i_queue.push(make_tuple(x_i_j, y_i_j));
@@ -156,7 +165,7 @@ class mapReceiveClass{
             int gx = get<0>(this->task_queues.at(i).front());
             int gy = get<1>(this->task_queues.at(i).front());
             inputTasks.push_back(make_tuple(sx, sy, gx, gy));
-            cout << "Agent: " << i << "Start: " << sx << ", " << sy << " Goals: " << gx << ", " << gy << endl; 
+            cout << "Agent: " << i << ", Start: " << sx << ", " << sy << " Goals: " << gx << ", " << gy << endl; 
         }
 
         LowLevelPlanner plannerObject(this->planningGrid);
@@ -183,11 +192,19 @@ class mapReceiveClass{
                 
 
             float t = 0;
+            int start_index = 2;
             while(t <= max_time + timestep){
+                TimedLoc next_anchor_point = agent_grid_coords.at(min(start_index, (int)agent_grid_coords.size()-1)); 
                 tuple<float, float, float> loc_agent_i = getLoc(agent_grid_coords, t);
                 if(t > 0 && get<0>(loc_agent_i) == get<0>(getLoc(agent_grid_coords, t - timestep)) && get<1>(loc_agent_i) == get<1>(getLoc(agent_grid_coords, t - timestep))){
                     t += timestep;
                     continue;
+                }
+                // If time is greater than next anchor point time, send anchor point instead and set t to that anchor point's timestamp
+                if(t > get<2>(next_anchor_point)){
+                    loc_agent_i = next_anchor_point;
+                    t = get<2>(next_anchor_point);
+                    start_index += 2;
                 }
                 float x = this->planningGrid.resolution*get<0>(loc_agent_i);
                 float y = this->planningGrid.resolution*(this->planningGrid.height - get<1>(loc_agent_i));
@@ -225,7 +242,7 @@ class mapReceiveClass{
             // Finding paths and logging output
             output = this->findPaths();
             this->logOutput(output);
-            paths_to_send = this->gridToWorldTransformAnyAngle(output, 1);
+            paths_to_send = this->gridToWorldTransformAnyAngle(output, 0.5);
             this->agent_current_paths = paths_to_send;
             agent_names = this->createAgentNames(output);
             vector<int64_t> goal_ids(agent_names.size(), 1);
