@@ -121,6 +121,10 @@ class mapReceiveClass{
             }
             this->task_queues.push_back(agent_i_queue);
         }
+        // Printing out task queue lengths for allotment issues
+        for(int i = 0; i < task_queues.size(); i++){
+            cout << "Task queue for agent " << i << " is: " << task_queues.at(i).size() << endl;
+        }
 
     }
 
@@ -136,9 +140,13 @@ class mapReceiveClass{
             float fy = controller_req.agent_locations.at(i).position.y;
             this->start_locs[i] = make_tuple(px, py);
             this->start_locs_float[i] = make_tuple(fx, fy);
+
+            cout << "Goal Status for Agent " << i << " is " << goal_status_flags.at(i) << endl;
             
             if(goal_status_flags.at(i) == 1){
+                cout << "Task for agent " << i << " has been popped from the queue" << endl; 
                 this->task_queues.at(i).pop();
+                cout << "New size for agent " << i << " is " << task_queues.at(i).size() << endl;
                 if(this->task_queues.at(i).empty()){
                     this->task_queues.at(i).push(make_tuple(px, py));
                 }
@@ -167,7 +175,9 @@ class mapReceiveClass{
             inputTasks.push_back(make_tuple(sx, sy, gx, gy));
             cout << "Agent: " << i << ", Start: " << sx << ", " << sy << " Goals: " << gx << ", " << gy << endl; 
         }
-
+        
+        this->planningGrid.populateGoalHeuristics(inputTasks);
+        cout << "Calculated Goal Hueristics" << endl;
         LowLevelPlanner plannerObject(this->planningGrid);
         results = cbsSearch(inputTasks, plannerObject);
         return results;
@@ -192,30 +202,37 @@ class mapReceiveClass{
                 
 
             float t = 0;
-            int start_index = 2;
-            while(t <= max_time + timestep){
+            int start_index = 1;
+            while(t <= max_time){
                 TimedLoc next_anchor_point = agent_grid_coords.at(min(start_index, (int)agent_grid_coords.size()-1)); 
                 tuple<float, float, float> loc_agent_i = getLoc(agent_grid_coords, t);
-                if(t > 0 && get<0>(loc_agent_i) == get<0>(getLoc(agent_grid_coords, t - timestep)) && get<1>(loc_agent_i) == get<1>(getLoc(agent_grid_coords, t - timestep))){
-                    t += timestep;
-                    continue;
-                }
+                // if(t > 0 && get<0>(loc_agent_i) == get<0>(getLoc(agent_grid_coords, t - timestep)) && get<1>(loc_agent_i) == get<1>(getLoc(agent_grid_coords, t - timestep))){
+                //     t += timestep;
+                //     continue;
+                // }
                 // If time is greater than next anchor point time, send anchor point instead and set t to that anchor point's timestamp
                 if(t > get<2>(next_anchor_point)){
                     loc_agent_i = next_anchor_point;
                     t = get<2>(next_anchor_point);
-                    start_index += 2;
+                    start_index += 1;
                 }
                 float x = this->planningGrid.resolution*get<0>(loc_agent_i);
                 float y = this->planningGrid.resolution*(this->planningGrid.height - get<1>(loc_agent_i));
+                // cout << x << ", " << y << endl;
                 agent_world_coords.push_back(dummy);
                 agent_world_coords[agent_world_coords.size()-1].pose.position.x = x;
                 agent_world_coords[agent_world_coords.size()-1].pose.position.y = y;
                 t += timestep;
             }
 
+            // Manually setting start of path to float location rather than grid coordinate to prevent snapping
             agent_world_coords[0].pose.position.x = get<0>(this->start_locs_float[i]);
             agent_world_coords[0].pose.position.y = get<1>(this->start_locs_float[i]);
+            
+            // Manually appending goal node
+            agent_world_coords.push_back(dummy);
+            agent_world_coords[agent_world_coords.size()-1].pose.position.x = this->planningGrid.resolution*get<0>(agent_grid_coords.back());
+            agent_world_coords[agent_world_coords.size()-1].pose.position.y = this->planningGrid.resolution*(this->planningGrid.height - get<1>(agent_grid_coords.back()));
 
             world_result[i].poses = agent_world_coords;
             world_result[i].header.frame_id = "map";
@@ -242,7 +259,7 @@ class mapReceiveClass{
             // Finding paths and logging output
             output = this->findPaths();
             this->logOutput(output);
-            paths_to_send = this->gridToWorldTransformAnyAngle(output, 0.5);
+            paths_to_send = this->gridToWorldTransformAnyAngle(output, 0.4);
             this->agent_current_paths = paths_to_send;
             agent_names = this->createAgentNames(output);
             vector<int64_t> goal_ids(agent_names.size(), 1);

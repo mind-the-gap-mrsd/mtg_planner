@@ -117,6 +117,7 @@ vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerOb
     CTNode root;
     vector<vector<TimedLoc>> results;
     for(int i=0; i < tasks.size(); i++){
+        cout << "Planning agent " << i << endl;
         vector<TimedLoc> agent_path = plannerObject.beginSearch(tasks.at(i), i, root.constraints);
         if(agent_path.empty()) {return results;}
         root.paths.push_back(agent_path);
@@ -126,7 +127,7 @@ vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerOb
     open_queue.push(root);
 
     while(!open_queue.empty()){
-        // cout << "Number of Nodes: " << open_queue.size() << endl;
+        cout << "Number of Nodes: " << open_queue.size() << endl;
         CTNode current_ct_node = open_queue.top();
         open_queue.pop();
 
@@ -140,7 +141,7 @@ vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerOb
             Constraint c = resolved_constraints.at(i);
             CTNode next_ct_node;
             next_ct_node.copyNode(current_ct_node);
-            // cout << get<0>(c) << ", " << get<0>(get<1>(c)) << ", " << get<1>(get<1>(c)) << ", " << get<2>(c) << endl;
+            cout << get<0>(c) << ", " << get<0>(get<1>(c)) << ", " << get<1>(get<1>(c)) << ", " << get<2>(c) << endl;
             next_ct_node.constraints.push_back(c);
             int agent_to_replan = get<0>(c);
             vector<TimedLoc> replanned_path = plannerObject.beginSearch(tasks.at(agent_to_replan), 

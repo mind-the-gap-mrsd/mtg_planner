@@ -1,10 +1,4 @@
-#include <cmath>
-#include <tuple>
-#include <algorithm>
-#include <queue>
-#include <map>
 #include "NavGrid.h"
-#include "constants.h"
 using namespace std;
 
 
@@ -71,11 +65,12 @@ class LowLevelPlanner{
     NavGrid planning_grid;
     float max_time;
     //  Movement directions
-    // int move[9][2] = {{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}, {-1,-1}, {1,-1}, {-1,1}, {1,1}};
-    int move[5][2] = {{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}};
+    int move[9][2] = {{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}, {-1,-1}, {1,-1}, {-1,1}, {1,1}};
+    // int move[5][2] = {{0,0}, {0,1}, {0,-1}, {1, 0}, {-1, 0}};
     //STL implementations of 
     priority_queue<Node, vector<Node>, NodeComparator> open_queue;
     map<TimedLoc, Node> closed_list;
+    map<TimedLoc, Node> open_list;
     map<tuple<float, float>, map<tuple<int, int>, int>> constraint_table;
 
     LowLevelPlanner(){
@@ -95,7 +90,12 @@ class LowLevelPlanner{
     }
 
     float computeHeuristic(Node n){
-        return sqrt(pow((n.x - xf),2) + pow((n.y-yf),2));
+        int nx = n.x;
+        int ny = n.y;
+
+        int dijkstra_cost = this->planning_grid.goal_dijkstra_map[make_tuple(xf, yf)].at(ny).at(nx);
+        // Factor of 10 in denominator since dijkstra is run with 10 and 14 instead of 1 and 1.4 - easier to write :P
+        return (float)dijkstra_cost*grid_resolution/(10.0*agent_velocity);
     }
 
     float computePathCost(Node curr_node, Node next_node){
@@ -227,8 +227,6 @@ class LowLevelPlanner{
         vector<TimedLoc> result;
         result.push_back(make_tuple(n.x, n.y, n.t));
         while(get<0>(n.parent) != -1 and get<1>(n.parent) != -1){
-            float time_to_turn = abs(n.heading - this->closed_list[n.parent].heading)/agent_ang_vel;
-            result.push_back(make_tuple(get<0>(n.parent), get<1>(n.parent), get<2>(n.parent) + time_to_turn));
             result.push_back(n.parent);
             n = this->closed_list[n.parent];
         }
@@ -273,7 +271,7 @@ class LowLevelPlanner{
             if(inMap(x, y)){
                 if(hitsObstacle(x, y, map_dilate_flag)) {return false;}
                 Node intermediate(x, y, node1);
-                intermediate.t = node1.t + computePathCost(intermediate, node1)*this->planning_grid.resolution/agent_velocity + abs(node1.heading - node2.heading)/agent_ang_vel; 
+                intermediate.t = node1.t + computePathCost(intermediate, node1)*this->planning_grid.resolution/agent_velocity; 
                 if(isConstrained(intermediate)) {return false;}
             }
         }
@@ -305,6 +303,10 @@ class LowLevelPlanner{
         while(!this->open_queue.empty())
             this->open_queue.pop();
         this->closed_list.clear();
+
+        std::ofstream logfile;
+        logfile.open("log" + to_string(id) +".csv", std::ios::app);
+        logfile << "-1,-1,-1" << endl;
         
         this->x0 = get<0>(task);
         this->y0 = get<1>(task);
@@ -321,11 +323,6 @@ class LowLevelPlanner{
 
         vector<TimedLoc> result;
 
-        // if(hitsObstacle(x0, y0, map_dilate_flag)){
-        //     cout << "Start point for Agent " << id << " is too close to obstacles" << endl;
-        //     return result;
-        // }
-
         if(hitsObstacle(xf, yf, map_dilate_flag)){
             cout << "End point for Agent " << id << " is too close to obstacles" << endl;
             return result;
@@ -333,7 +330,12 @@ class LowLevelPlanner{
         
         while(!this->open_queue.empty()){
             Node curr_node = this->open_queue.top();
+            // Remove from open queue
             this->open_queue.pop();
+
+            // Write current timestamped node to csv file for viz
+            logfile << curr_node.x << "," << curr_node.y << "," << curr_node.t << endl;
+
 
             if(curr_node.x == xf && curr_node.y == yf){
                 // TODO: Logic to check if goal is constrained in future states before returning
@@ -345,7 +347,7 @@ class LowLevelPlanner{
                         goal_is_constrained = true;
                         break;
                     }
-                    n.t += t_eps;
+                    n.t += delta_t;
                 }
                 if(!goal_is_constrained){ 
                     result = tracePath(curr_node);
@@ -353,7 +355,7 @@ class LowLevelPlanner{
                 }
             }
 
-            for(int dir=0; dir < 5; dir++){
+            for(int dir=0; dir < 9; dir++){
                 int new_pos_x = curr_node.x + this->move[dir][0];
                 int new_pos_y = curr_node.y + this->move[dir][1];
 
@@ -373,13 +375,13 @@ class LowLevelPlanner{
                         child.parent = make_tuple(parent_of_curr.x, parent_of_curr.y, parent_of_curr.t);
                         child.heading = atan2(child.y - parent_of_curr.y, child.x - parent_of_curr.x);
                         float parent_child_dist = computePathCost(parent_of_curr, child);
-                        child.t = parent_of_curr.t + abs(child.heading - parent_of_curr.heading)/agent_ang_vel + parent_child_dist*this->planning_grid.resolution/agent_velocity;
+                        child.t = parent_of_curr.t  + parent_child_dist*this->planning_grid.resolution/agent_velocity;
                         // child.g = parent_of_curr.g + parent_child_dist;
                         child.g = child.t;
                         child.f = child.g + child.h;
                     }
                     else{
-                        child.t = curr_node.t + 0.5*t_eps;
+                        child.t = curr_node.t + delta_t;
                         // child.g += 1 + 0*agent_velocity/this->planning_grid.resolution;
                         child.g = child.t;
                         child.f = child.g + child.h;
@@ -390,13 +392,13 @@ class LowLevelPlanner{
                     if(dir != 0){
                         child.heading = atan2(child.y - curr_node.y, child.x - curr_node.x);
                         float curr_child_dist = computePathCost(curr_node, child);
-                        child.t = curr_node.t + abs(child.heading-curr_node.heading)/agent_ang_vel + curr_child_dist*this->planning_grid.resolution/agent_velocity;
+                        child.t = curr_node.t  + curr_child_dist*this->planning_grid.resolution/agent_velocity;
                         // child.g = curr_node.g + curr_child_dist;
                         child.g = child.t;
                         child.f = child.g + child.h;
                     }
                     else {
-                        child.t = curr_node.t + 0.5*t_eps;
+                        child.t = curr_node.t + delta_t;
                         // child.g += 1 + 0*agent_velocity/this->planning_grid.resolution;
                         child.g = child.t;
                         child.f = child.h + child.g;
@@ -408,7 +410,7 @@ class LowLevelPlanner{
                 map<TimedLoc,Node>::iterator iter = closed_list.find(make_tuple(child.x, child.y, child.t));
                 if(iter != closed_list.end()){
                     if(child.isLessThan(iter->second)){
-                        closed_list[make_tuple(child.x, child.y, child.t)] = child;
+                        closed_list[iter->first] = child;
                         open_queue.push(child);
                     }
 
@@ -416,7 +418,8 @@ class LowLevelPlanner{
                 else{
                     closed_list[make_tuple(child.x, child.y, child.t)] = child;
                     open_queue.push(child);
-                }    
+                }
+
             }
         }
         return result;       

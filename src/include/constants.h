@@ -1,16 +1,29 @@
-float agent_velocity = 0.5;
+#include<vector>
+#include<string>
+#include<iostream>
+#include<fstream>
+#include<queue>
+#include<algorithm>
+#include<map>
+#include <cmath>
+#include <tuple>
+using namespace std;
+
+
+
+float agent_velocity = 0.3;
 //Angular velocity is linear velocity by the distance between wheels (10 cm)
 float agent_ang_vel = 0.5*agent_velocity/0.05;
 // Agent size in grid cell units
 int agent_size = 3;
 // resolution in m/ grid cell
 float grid_resolution = 0.05;
-// Threshold to detect collisions between paths
-float x_eps = agent_size + 1;
+// Threshold to detect collisions between paths in grid cell units
+float x_eps = agent_size + 0.5;
+//Squared of blocking radius in agent_size units
+float blocking_radius_sq = 1.5;
 // Max time duration to block out for a suspected collision
-float t_eps = (0.5*(1.57/(agent_ang_vel) + (2.5*agent_size*grid_resolution)/agent_velocity));
-//Squared of blocking radius in grid cell units 
-float blocking_radius_sq = 2.25;
+float t_eps = ((sqrt(blocking_radius_sq)*agent_size*grid_resolution)/agent_velocity);
 // Inflation radius for collision check
 float inflation_radius = 3.3;
 // Discretization time step for planning
