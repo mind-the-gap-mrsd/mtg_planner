@@ -1,5 +1,6 @@
 #include "NavGrid.h"
 using namespace std;
+mutex mtx_lowlevel;
 
 
 
@@ -71,7 +72,8 @@ class LowLevelPlanner{
     priority_queue<Node, vector<Node>, NodeComparator> open_queue;
     map<TimedLoc, Node> closed_list;
     map<TimedLoc, Node> open_list;
-    map<tuple<float, float>, map<tuple<int, int>, int>> constraint_table;
+    //constraint_matrix[i][j] -> vector of (float,float) constrained time intervals at location i,j
+    vector<vector<vector<tuple<float, float>>>> constraint_matrix;
 
     LowLevelPlanner(){
         this->x0 = -1;
@@ -85,6 +87,7 @@ class LowLevelPlanner{
     }
     LowLevelPlanner(NavGrid map){
         this->planning_grid = map;
+        this->constraint_matrix.resize(planning_grid.height, vector<vector<tuple<float, float>>>(planning_grid.width));
         this->agent_id = -1;
         this->max_time = 0.0;
     }
@@ -139,7 +142,7 @@ class LowLevelPlanner{
         return false;
     }
 
-    vector<tuple<int, int>> getConstrainedCells(tuple<float, float> impact_location){
+    vector<tuple<int, int>> updateConstrainedCells(tuple<float, float> impact_location, float constrained_time){
         int x_imp = (int)round(get<0>(impact_location));
         int y_imp = (int)round(get<1>(impact_location));
 
@@ -149,7 +152,7 @@ class LowLevelPlanner{
             for(int j=-1*(3*agent_size); j <= (3*agent_size); j++){
                 if(inMap(x_imp+i, y_imp + j)){
                     if(pow(i,2) + pow(j,2) <= blocking_radius_sq*pow(agent_size,2))
-                        constrained_list.push_back(make_tuple(x_imp + i, y_imp + j)); 
+                        this->constraint_matrix[y_imp + j][x_imp + i].push_back(make_tuple(constrained_time, constrained_time + t_eps)); 
                 }
             }
         }
@@ -175,20 +178,15 @@ class LowLevelPlanner{
     */
         
         if(constraints.empty()) { return; }
-        this->constraint_table.clear();
+        this->constraint_matrix.clear();
+        this->constraint_matrix.resize(this->planning_grid.height, vector<vector<tuple<float, float>>>(this->planning_grid.width));
 
         for(int i=0; i < constraints.size(); i++){
             float c_time = get<2>(constraints.at(i));
             if(c_time > this->max_time) { this->max_time = c_time; }
 
             if(get<0>(constraints.at(i)) == this->agent_id){
-                tuple<float, float> key = make_tuple(c_time - t_eps, c_time + t_eps);
-                // cout << get<0>(key) <<  ", " << get<1>(key) << endl;
-                vector<tuple<int, int>> constrained_list = getConstrainedCells(get<1>(constraints.at(i)));
-                for(int j = 0; j < constrained_list.size(); j++){
-                    // cout << get<0>(constrained_list.at(j)) << ", " << get<1>(constrained_list.at(j)) << endl;
-                    constraint_table[key][constrained_list.at(j)] = 1;
-                }
+                updateConstrainedCells(get<1>(constraints.at(i)), get<2>(constraints.at(i)));
             }
         }
     }
@@ -204,22 +202,14 @@ class LowLevelPlanner{
      *  location in the vector list. If so, return true, else false.
     */
 
+        vector<tuple<float, float>> time_bounds = this->constraint_matrix[n.y][n.x];
+        if(time_bounds.empty()) { return false; }
 
-        if(this->constraint_table.empty()) { return false; }
-
-        float current_time = n.t;
-        map<tuple<float, float>, map<tuple<int, int>, int>>::iterator iter;
-        for(iter = this->constraint_table.begin(); iter != this->constraint_table.end(); ++iter){
-            tuple<float, float> time_bound = iter->first;
-            if(current_time < get<0>(time_bound) || current_time > get<1>(time_bound)){
-                continue;
-            }
-            tuple<int, int> current_loc = make_tuple(n.x, n.y);
-            if(iter->second.count(current_loc) > 0){
-                return true;
-            }
+        for(int i=0; i <time_bounds.size(); i++){
+            float t_lower = get<0>(time_bounds.at(i));
+            float t_upper = get<1>(time_bounds.at(i));
+            if((n.t - t_lower)*(n.t-t_upper) <= 0) { return true; } 
         }
-
         return false;
     }
 
@@ -298,8 +288,70 @@ class LowLevelPlanner{
  * RETURNS : vector of timestamped locations - (int x, int y, float time_to_reach)
 */
 
-    vector<TimedLoc> beginSearch(Task task, int id, vector<Constraint> constraints){
+    void searchNextNode_thread(int dir, Node& curr_node, Node& start){
+        int new_pos_x = curr_node.x + this->move[dir][0];
+        int new_pos_y = curr_node.y + this->move[dir][1];
 
+        if(!inMap(new_pos_x, new_pos_y)) { return; }
+        if(hitsObstacle(new_pos_x, new_pos_y, map_dilate_flag)) { return; }
+
+        Node child(new_pos_x, new_pos_y, curr_node);
+
+        Node parent_of_curr = this->closed_list[curr_node.parent];
+        if(parent_of_curr.x == -1 and parent_of_curr.y == -1){
+            parent_of_curr = start;
+        }
+
+        child.h = computeHeuristic(child);
+
+        if(dir != 0){
+            if(lineOfSight(parent_of_curr, child)){
+                child.parent = make_tuple(parent_of_curr.x, parent_of_curr.y, parent_of_curr.t);
+                child.heading = atan2(child.y - parent_of_curr.y, child.x - parent_of_curr.x);
+                float parent_child_dist = computePathCost(parent_of_curr, child);
+                child.t = parent_of_curr.t  + parent_child_dist*this->planning_grid.resolution/agent_velocity;
+                child.g = child.t;
+                child.f = child.g + child.h;
+            }
+            else {
+                child.heading = atan2(child.y - curr_node.y, child.x - curr_node.x);
+                float curr_child_dist = computePathCost(curr_node, child);
+                child.t = curr_node.t  + curr_child_dist*this->planning_grid.resolution/agent_velocity;
+                // child.g = curr_node.g + curr_child_dist;
+                child.g = child.t;
+                child.f = child.g + child.h;
+            }
+
+        } else {
+            child.t = curr_node.t + t_eps;
+            child.g = child.t;
+            child.f = child.g + child.h;
+        }
+
+        if(isConstrained(child)){ return; }
+
+        map<TimedLoc,Node>::iterator iter = closed_list.find(make_tuple(child.x, child.y, child.t));
+        if(iter != closed_list.end()){
+            if(child.isLessThan(iter->second)){
+                mtx_lowlevel.lock();
+                closed_list[iter->first] = child;
+                open_queue.push(child);
+                mtx_lowlevel.unlock();
+            }
+
+        }
+        else{
+            mtx_lowlevel.lock();
+            closed_list[make_tuple(child.x, child.y, child.t)] = child;
+            open_queue.push(child);
+            mtx_lowlevel.unlock();
+        }
+    }
+    
+    vector<TimedLoc> beginSearch(Task task, int id, vector<Constraint> constraints){
+        auto start_time = chrono::high_resolution_clock::now();
+        auto end_time = chrono::high_resolution_clock::now();
+        chrono::duration<double> duration = end_time - start_time; 
         while(!this->open_queue.empty())
             this->open_queue.pop();
         this->closed_list.clear();
@@ -328,10 +380,14 @@ class LowLevelPlanner{
             return result;
         }
         
-        while(!this->open_queue.empty()){
+        while(!this->open_queue.empty() && duration.count() < TIME_OUT){
+            end_time = chrono::high_resolution_clock::now();
+            duration = end_time - start_time;
+            cout << "Exec time is: " << duration.count() << endl;
             Node curr_node = this->open_queue.top();
             // Remove from open queue
             this->open_queue.pop();
+            
 
             // Write current timestamped node to csv file for viz
             logfile << curr_node.x << "," << curr_node.y << "," << curr_node.t << endl;
@@ -345,9 +401,10 @@ class LowLevelPlanner{
                 while(n.t <= this->max_time + t_eps){
                     if(isConstrained(n)){
                         goal_is_constrained = true;
+                        curr_node.t = n.t;
                         break;
                     }
-                    n.t += delta_t;
+                    n.t += t_eps;
                 }
                 if(!goal_is_constrained){ 
                     result = tracePath(curr_node);
@@ -355,72 +412,68 @@ class LowLevelPlanner{
                 }
             }
 
+            thread threads[9];
             for(int dir=0; dir < 9; dir++){
-                int new_pos_x = curr_node.x + this->move[dir][0];
-                int new_pos_y = curr_node.y + this->move[dir][1];
-
-                if(!inMap(new_pos_x, new_pos_y)) { continue; }
-                if(hitsObstacle(new_pos_x, new_pos_y, map_dilate_flag)) { continue; }
-
-                Node child(new_pos_x, new_pos_y, curr_node);
-
-                Node parent_of_curr = this->closed_list[curr_node.parent];
-                if(parent_of_curr.x == -1 and parent_of_curr.y == -1){
-                    parent_of_curr = start;
-                }
-
-                if(lineOfSight(parent_of_curr, child)){
-                    child.h = computeHeuristic(child);
-                    if(dir != 0){
-                        child.parent = make_tuple(parent_of_curr.x, parent_of_curr.y, parent_of_curr.t);
-                        child.heading = atan2(child.y - parent_of_curr.y, child.x - parent_of_curr.x);
-                        float parent_child_dist = computePathCost(parent_of_curr, child);
-                        child.t = parent_of_curr.t  + parent_child_dist*this->planning_grid.resolution/agent_velocity;
-                        // child.g = parent_of_curr.g + parent_child_dist;
-                        child.g = child.t;
-                        child.f = child.g + child.h;
-                    }
-                    else{
-                        child.t = curr_node.t + delta_t;
-                        // child.g += 1 + 0*agent_velocity/this->planning_grid.resolution;
-                        child.g = child.t;
-                        child.f = child.g + child.h;
-                    }
-                }
-                else {
-                    child.h = computeHeuristic(child);
-                    if(dir != 0){
-                        child.heading = atan2(child.y - curr_node.y, child.x - curr_node.x);
-                        float curr_child_dist = computePathCost(curr_node, child);
-                        child.t = curr_node.t  + curr_child_dist*this->planning_grid.resolution/agent_velocity;
-                        // child.g = curr_node.g + curr_child_dist;
-                        child.g = child.t;
-                        child.f = child.g + child.h;
-                    }
-                    else {
-                        child.t = curr_node.t + delta_t;
-                        // child.g += 1 + 0*agent_velocity/this->planning_grid.resolution;
-                        child.g = child.t;
-                        child.f = child.h + child.g;
-                    }
-                }
-                
-                if(isConstrained(child)){ continue; }
-
-                map<TimedLoc,Node>::iterator iter = closed_list.find(make_tuple(child.x, child.y, child.t));
-                if(iter != closed_list.end()){
-                    if(child.isLessThan(iter->second)){
-                        closed_list[iter->first] = child;
-                        open_queue.push(child);
-                    }
-
-                }
-                else{
-                    closed_list[make_tuple(child.x, child.y, child.t)] = child;
-                    open_queue.push(child);
-                }
-
+                threads[dir] = thread(&LowLevelPlanner::searchNextNode_thread, this, dir, std::ref(curr_node), std::ref(start));
             }
+
+            for(int dir=0; dir < 9; dir++){
+                threads[dir].join();
+            }
+
+                // int new_pos_x = curr_node.x + this->move[dir][0];
+                // int new_pos_y = curr_node.y + this->move[dir][1];
+
+                // if(!inMap(new_pos_x, new_pos_y)) { continue; }
+                // if(hitsObstacle(new_pos_x, new_pos_y, map_dilate_flag)) { continue; }
+
+                // Node child(new_pos_x, new_pos_y, curr_node);
+
+                // Node parent_of_curr = this->closed_list[curr_node.parent];
+                // if(parent_of_curr.x == -1 and parent_of_curr.y == -1){
+                //     parent_of_curr = start;
+                // }
+
+                // child.h = computeHeuristic(child);
+
+                // if(dir != 0){
+                //     if(lineOfSight(parent_of_curr, child)){
+                //         child.parent = make_tuple(parent_of_curr.x, parent_of_curr.y, parent_of_curr.t);
+                //         child.heading = atan2(child.y - parent_of_curr.y, child.x - parent_of_curr.x);
+                //         float parent_child_dist = computePathCost(parent_of_curr, child);
+                //         child.t = parent_of_curr.t  + parent_child_dist*this->planning_grid.resolution/agent_velocity;
+                //         child.g = child.t;
+                //         child.f = child.g + child.h;
+                //     }
+                //     else {
+                //         child.heading = atan2(child.y - curr_node.y, child.x - curr_node.x);
+                //         float curr_child_dist = computePathCost(curr_node, child);
+                //         child.t = curr_node.t  + curr_child_dist*this->planning_grid.resolution/agent_velocity;
+                //         // child.g = curr_node.g + curr_child_dist;
+                //         child.g = child.t;
+                //         child.f = child.g + child.h;
+                //     }
+
+                // } else {
+                //     child.t = curr_node.t + t_eps;
+                //     child.g = child.t;
+                //     child.f = child.g + child.h;
+                // }
+
+                // if(isConstrained(child)){ continue; }
+
+                // map<TimedLoc,Node>::iterator iter = closed_list.find(make_tuple(child.x, child.y, child.t));
+                // if(iter != closed_list.end()){
+                //     if(child.isLessThan(iter->second)){
+                //         closed_list[iter->first] = child;
+                //         open_queue.push(child);
+                //     }
+
+                // }
+                // else{
+                //     closed_list[make_tuple(child.x, child.y, child.t)] = child;
+                //     open_queue.push(child);
+                // }
         }
         return result;       
     }

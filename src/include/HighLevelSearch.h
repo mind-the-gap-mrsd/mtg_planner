@@ -1,5 +1,6 @@
 #include "LowLevelSearch.h"
 using namespace std;
+mutex mtx;
 
 
 /***
@@ -67,9 +68,9 @@ vector<Constraint> resolveCollision(Collision col){
 }
 
 float getSumOfCosts(vector<vector<TimedLoc>> agent_paths){
-    float cost = 0;
+    float cost = -1;
     for(int i=0; i < agent_paths.size(); i++){
-        cost += get<2>(agent_paths.at(i).back());
+        cost = max(get<2>(agent_paths.at(i).back()), cost);
     }
     return cost;
 }
@@ -109,6 +110,41 @@ struct CTNodeComparator{
     }
 };
 
+//////////////////////////////////////////// Thread Callback ///////////////////////////////////////////////////////////////
+
+void collisionResolution_Thread(int threadID, priority_queue<CTNode, vector<CTNode>, CTNodeComparator>& open_queue, CTNode& current_ct_node,
+vector<Task> tasks, LowLevelPlanner plannerObject){
+    /**
+     * Modifies the min-heap pq by reference by resolving the ith collision in the collision vector
+    */
+    cout << "Thread ID is: " << threadID << endl; 
+    Collision curr_collision = current_ct_node.collisions.at(threadID);
+    vector<Constraint> resolved_constraints = resolveCollision(curr_collision);
+
+
+    for(int i=0; i < resolved_constraints.size(); i++){
+        Constraint c = resolved_constraints.at(i);
+        CTNode next_ct_node;
+        next_ct_node.copyNode(current_ct_node);
+        
+        next_ct_node.constraints.push_back(c);
+        int agent_to_replan = get<0>(c);
+        vector<TimedLoc> replanned_path = plannerObject.beginSearch(tasks.at(agent_to_replan), 
+                                                                    agent_to_replan, 
+                                                                    next_ct_node.constraints);
+        
+        if(replanned_path.empty()) { continue; }
+
+        next_ct_node.paths.at(agent_to_replan) = replanned_path;
+        next_ct_node.collisions = detectCollisionsInPaths(next_ct_node.paths);
+        next_ct_node.sum_of_costs = getSumOfCosts(next_ct_node.paths);
+        mtx.lock();
+        open_queue.push(next_ct_node);
+        mtx.unlock();
+
+    }
+}
+
 //////////////////////////////////////////// Main Search Function //////////////////////////////////////////////////////////
 
 vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerObject){
@@ -132,29 +168,40 @@ vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerOb
         open_queue.pop();
 
         if(current_ct_node.collisions.empty()) { return current_ct_node.paths; }
-
-        Collision curr_collision = current_ct_node.collisions.at(0);
-        vector<Constraint> resolved_constraints = resolveCollision(curr_collision);
+        // Spawn min(N, len(collisions)) threads
+        int numThreads = static_cast<int>(current_ct_node.collisions.size());
+        thread threads[numThreads];
+        cout << "Threads spawned" << endl;
+        for(int i = 0; i < numThreads; i++){
+            threads[i] = thread(collisionResolution_Thread, i, std::ref(open_queue), std::ref(current_ct_node), tasks, plannerObject);
+        }
+        
+        for(int i = 0; i < numThreads; i++){
+            threads[i].join();
+        }
+        cout << " Threads joined" << endl;
+        // Collision curr_collision = current_ct_node.collisions.at(0);
+        // vector<Constraint> resolved_constraints = resolveCollision(curr_collision);
         
 
-        for(int i=0; i < resolved_constraints.size(); i++){
-            Constraint c = resolved_constraints.at(i);
-            CTNode next_ct_node;
-            next_ct_node.copyNode(current_ct_node);
-            cout << get<0>(c) << ", " << get<0>(get<1>(c)) << ", " << get<1>(get<1>(c)) << ", " << get<2>(c) << endl;
-            next_ct_node.constraints.push_back(c);
-            int agent_to_replan = get<0>(c);
-            vector<TimedLoc> replanned_path = plannerObject.beginSearch(tasks.at(agent_to_replan), 
-                                                                        agent_to_replan, 
-                                                                        next_ct_node.constraints);
+        // for(int i=0; i < resolved_constraints.size(); i++){
+        //     Constraint c = resolved_constraints.at(i);
+        //     CTNode next_ct_node;
+        //     next_ct_node.copyNode(current_ct_node);
+        //     cout << get<0>(c) << ", " << get<0>(get<1>(c)) << ", " << get<1>(get<1>(c)) << ", " << get<2>(c) << endl;
+        //     next_ct_node.constraints.push_back(c);
+        //     int agent_to_replan = get<0>(c);
+        //     vector<TimedLoc> replanned_path = plannerObject.beginSearch(tasks.at(agent_to_replan), 
+        //                                                                 agent_to_replan, 
+        //                                                                 next_ct_node.constraints);
             
-            if(replanned_path.empty()) { continue; }
+        //     if(replanned_path.empty()) { continue; }
 
-            next_ct_node.paths.at(agent_to_replan) = replanned_path;
-            next_ct_node.collisions = detectCollisionsInPaths(next_ct_node.paths);
-            next_ct_node.sum_of_costs = getSumOfCosts(next_ct_node.paths);
-            open_queue.push(next_ct_node);
-        }
+        //     next_ct_node.paths.at(agent_to_replan) = replanned_path;
+        //     next_ct_node.collisions = detectCollisionsInPaths(next_ct_node.paths);
+        //     next_ct_node.sum_of_costs = getSumOfCosts(next_ct_node.paths);
+        //     open_queue.push(next_ct_node);
+        // }
     }
     return results;
 }
