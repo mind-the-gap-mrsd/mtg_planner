@@ -152,7 +152,7 @@ class LowLevelPlanner{
             for(int j=-1*(3*agent_size); j <= (3*agent_size); j++){
                 if(inMap(x_imp+i, y_imp + j)){
                     if(pow(i,2) + pow(j,2) <= blocking_radius_sq*pow(agent_size,2))
-                        this->constraint_matrix[y_imp + j][x_imp + i].push_back(make_tuple(constrained_time, constrained_time + t_eps)); 
+                        this->constraint_matrix[y_imp + j][x_imp + i].push_back(make_tuple(constrained_time - t_eps/2, constrained_time + t_eps/2)); 
                 }
             }
         }
@@ -182,12 +182,15 @@ class LowLevelPlanner{
         this->constraint_matrix.resize(this->planning_grid.height, vector<vector<tuple<float, float>>>(this->planning_grid.width));
 
         for(int i=0; i < constraints.size(); i++){
-            float c_time = get<2>(constraints.at(i));
-            if(c_time > this->max_time) { this->max_time = c_time; }
-
             if(get<0>(constraints.at(i)) == this->agent_id){
                 updateConstrainedCells(get<1>(constraints.at(i)), get<2>(constraints.at(i)));
             }
+        }
+        if(this->constraint_matrix[this->yf][this->xf].empty()) { this->max_time = 0; }
+
+        for(int i = 0; i < this->constraint_matrix[this->yf][this->xf].size(); i++){
+            tuple<float, float> time_bounds = this->constraint_matrix[this->yf][this->xf].at(i);
+            if (get<1>(time_bounds) > this->max_time) {this->max_time = get<1>(time_bounds);}
         }
     }
 
@@ -201,14 +204,16 @@ class LowLevelPlanner{
      * 1. Iterate over keys - if node.time is within the range then check if node
      *  location in the vector list. If so, return true, else false.
     */
-
         vector<tuple<float, float>> time_bounds = this->constraint_matrix[n.y][n.x];
-        if(time_bounds.empty()) { return false; }
+        if(time_bounds.empty()) { 
+            return false; 
+        }
 
         for(int i=0; i <time_bounds.size(); i++){
             float t_lower = get<0>(time_bounds.at(i));
             float t_upper = get<1>(time_bounds.at(i));
-            if((n.t - t_lower)*(n.t-t_upper) <= 0) { return true; } 
+            if((n.t - t_lower)*(n.t-t_upper) <= 0) { 
+                return true; } 
         }
         return false;
     }
@@ -323,7 +328,7 @@ class LowLevelPlanner{
             }
 
         } else {
-            child.t = curr_node.t + t_eps;
+            child.t = curr_node.t + 1.4*this->planning_grid.resolution/agent_velocity;
             child.g = child.t;
             child.f = child.g + child.h;
         }
@@ -383,7 +388,7 @@ class LowLevelPlanner{
         while(!this->open_queue.empty() && duration.count() < TIME_OUT){
             end_time = chrono::high_resolution_clock::now();
             duration = end_time - start_time;
-            cout << "Exec time is: " << duration.count() << endl;
+            // cout << "Exec time is: " << duration.count() << endl;
             Node curr_node = this->open_queue.top();
             // Remove from open queue
             this->open_queue.pop();

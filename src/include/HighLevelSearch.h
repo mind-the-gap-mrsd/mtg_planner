@@ -116,8 +116,7 @@ void collisionResolution_Thread(int threadID, priority_queue<CTNode, vector<CTNo
 vector<Task> tasks, LowLevelPlanner plannerObject){
     /**
      * Modifies the min-heap pq by reference by resolving the ith collision in the collision vector
-    */
-    cout << "Thread ID is: " << threadID << endl; 
+    */ 
     Collision curr_collision = current_ct_node.collisions.at(threadID);
     vector<Constraint> resolved_constraints = resolveCollision(curr_collision);
 
@@ -129,12 +128,12 @@ vector<Task> tasks, LowLevelPlanner plannerObject){
         
         next_ct_node.constraints.push_back(c);
         int agent_to_replan = get<0>(c);
+        cout << "Resolving agent " << get<0>(c) << "at location (" << get<0>(get<1>(c)) << ", " << get<1>(get<1>(c)) <<"), at time " << get<2>(c) << endl;
         vector<TimedLoc> replanned_path = plannerObject.beginSearch(tasks.at(agent_to_replan), 
                                                                     agent_to_replan, 
                                                                     next_ct_node.constraints);
         
         if(replanned_path.empty()) { continue; }
-
         next_ct_node.paths.at(agent_to_replan) = replanned_path;
         next_ct_node.collisions = detectCollisionsInPaths(next_ct_node.paths);
         next_ct_node.sum_of_costs = getSumOfCosts(next_ct_node.paths);

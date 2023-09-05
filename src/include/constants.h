@@ -32,7 +32,7 @@ float inflation_radius = 3.3;
 float delta_t = 0.2*(grid_resolution/agent_velocity);
 // float delta_t = 0.1;
 // Time out constant in seconds
-double TIME_OUT = 60; 
+double TIME_OUT = 10; 
 // Map Dilate Flag
 char map_dilate_flag = 'u';
 
@@ -52,12 +52,13 @@ void logOutput(vector<vector<TimedLoc>> results){
 }
 
 tuple<float, float, float> getLoc(vector<TimedLoc> path, float time){
-    
-    if(time < 0)
+    // TODO: Broken for path size 2 -> quick fix possible
+    int x1,y1,x2,y2;
+    if(time <= 0)
         return make_tuple(get<0>(path.at(0))*1.0,get<1>(path.at(0))*1.0, get<2>(path.at(0)));
     if(time >= get<2>(path.back()))
         return make_tuple(get<0>(path.back())*1.0, get<1>(path.back())*1.0, time);
-
+    
     float x_point = 0, y_point = 0;
     int index = -1;
     for(int i=0; i < path.size(); i++){
@@ -66,9 +67,14 @@ tuple<float, float, float> getLoc(vector<TimedLoc> path, float time){
             break;
         }
     }
-
-    int x1 = get<0>(path.at(index)), y1 = get<1>(path.at(index));
-    int x2 = get<0>(path.at(index+1)), y2 = get<1>(path.at(index+1));
+    if(path.size() <= 2){
+        x1 = get<0>(path.at(0)); y1 = get<1>(path.at(0));
+        x2 = get<0>(path.back()); y2 = get<1>(path.back());
+    }
+    else{
+        x1 = get<0>(path.at(index)); y1 = get<1>(path.at(index));
+        x2 = get<0>(path.at(index+1)); y2 = get<1>(path.at(index+1));
+    }
 
     if(x1 == x2 and y1 == y2)
         return make_tuple(x1*1.0, y1*1.0, time);
