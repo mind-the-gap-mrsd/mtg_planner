@@ -33,6 +33,8 @@ float delta_t = 0.2*(grid_resolution/agent_velocity);
 // float delta_t = 0.1;
 // Time out constant in seconds
 double TIME_OUT = 10; 
+// Time limit for high level solution
+double SEARCH_TIME_OUT = 300;
 // Map Dilate Flag
 char map_dilate_flag = 'u';
 

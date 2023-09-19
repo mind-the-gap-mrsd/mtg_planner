@@ -141,8 +141,6 @@ class NavGrid{
             map<tuple<int, int>, vector<vector<int>>>::iterator iter = this->goal_dijkstra_map.find(ith_goal);
             if(iter == goal_dijkstra_map.end()){
                 this->goal_dijkstra_map[ith_goal] = this->dijkstra(ith_goal);
-                cout << "Added " << get<0>(ith_goal) << ", " << get<1>(ith_goal) << " to dijkstra map" << endl;
-                cout << "Map size is now " << this->goal_dijkstra_map.size() << endl;
             }
         }
     }

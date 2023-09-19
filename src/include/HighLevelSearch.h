@@ -128,7 +128,7 @@ vector<Task> tasks, LowLevelPlanner plannerObject){
         
         next_ct_node.constraints.push_back(c);
         int agent_to_replan = get<0>(c);
-        cout << "Resolving agent " << get<0>(c) << "at location (" << get<0>(get<1>(c)) << ", " << get<1>(get<1>(c)) <<"), at time " << get<2>(c) << endl;
+        // cout << "Resolving agent " << get<0>(c) << "at location (" << get<0>(get<1>(c)) << ", " << get<1>(get<1>(c)) <<"), at time " << get<2>(c) << endl;
         vector<TimedLoc> replanned_path = plannerObject.beginSearch(tasks.at(agent_to_replan), 
                                                                     agent_to_replan, 
                                                                     next_ct_node.constraints);
@@ -152,7 +152,7 @@ vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerOb
     CTNode root;
     vector<vector<TimedLoc>> results;
     for(int i=0; i < tasks.size(); i++){
-        cout << "Planning agent " << i << endl;
+        // cout << "Planning agent " << i << endl;
         vector<TimedLoc> agent_path = plannerObject.beginSearch(tasks.at(i), i, root.constraints);
         if(agent_path.empty()) {return results;}
         root.paths.push_back(agent_path);
@@ -160,9 +160,15 @@ vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerOb
     root.sum_of_costs = getSumOfCosts(root.paths);
     root.collisions = detectCollisionsInPaths(root.paths);
     open_queue.push(root);
+    auto start_time = chrono::high_resolution_clock::now();
+    auto end_time = chrono::high_resolution_clock::now();
+    chrono::duration<double> duration = end_time - start_time;
 
-    while(!open_queue.empty()){
-        cout << "Number of Nodes: " << open_queue.size() << endl;
+    while(!open_queue.empty() && duration.count() < SEARCH_TIME_OUT){
+        // cout << "Number of Nodes: " << open_queue.size() << endl;
+        end_time = chrono::high_resolution_clock::now();
+        duration = end_time - start_time;
+
         CTNode current_ct_node = open_queue.top();
         open_queue.pop();
 
@@ -170,7 +176,7 @@ vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerOb
         // Spawn min(N, len(collisions)) threads
         int numThreads = static_cast<int>(current_ct_node.collisions.size());
         thread threads[numThreads];
-        cout << "Threads spawned" << endl;
+        // cout << "Threads spawned" << endl;
         for(int i = 0; i < numThreads; i++){
             threads[i] = thread(collisionResolution_Thread, i, std::ref(open_queue), std::ref(current_ct_node), tasks, plannerObject);
         }
@@ -178,29 +184,7 @@ vector<vector<TimedLoc>> cbsSearch(vector<Task> tasks, LowLevelPlanner plannerOb
         for(int i = 0; i < numThreads; i++){
             threads[i].join();
         }
-        cout << " Threads joined" << endl;
-        // Collision curr_collision = current_ct_node.collisions.at(0);
-        // vector<Constraint> resolved_constraints = resolveCollision(curr_collision);
-        
-
-        // for(int i=0; i < resolved_constraints.size(); i++){
-        //     Constraint c = resolved_constraints.at(i);
-        //     CTNode next_ct_node;
-        //     next_ct_node.copyNode(current_ct_node);
-        //     cout << get<0>(c) << ", " << get<0>(get<1>(c)) << ", " << get<1>(get<1>(c)) << ", " << get<2>(c) << endl;
-        //     next_ct_node.constraints.push_back(c);
-        //     int agent_to_replan = get<0>(c);
-        //     vector<TimedLoc> replanned_path = plannerObject.beginSearch(tasks.at(agent_to_replan), 
-        //                                                                 agent_to_replan, 
-        //                                                                 next_ct_node.constraints);
-            
-        //     if(replanned_path.empty()) { continue; }
-
-        //     next_ct_node.paths.at(agent_to_replan) = replanned_path;
-        //     next_ct_node.collisions = detectCollisionsInPaths(next_ct_node.paths);
-        //     next_ct_node.sum_of_costs = getSumOfCosts(next_ct_node.paths);
-        //     open_queue.push(next_ct_node);
-        // }
+        // cout << " Threads joined" << endl;
     }
     return results;
 }

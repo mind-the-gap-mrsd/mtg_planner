@@ -21,5 +21,8 @@ include_directories(
 )
 
 add_executable(mtg_planner src/cbs_node.cpp)
+add_executable(mtg_planner_tester src/planner_tester.cpp)
 add_dependencies(mtg_planner ${catkin_EXPORTED_TARGETS})
+add_dependencies(mtg_planner_tester ${catkin_EXPORTED_TARGETS})
 target_link_libraries(mtg_planner ${catkin_LIBRARIES} )
+target_link_libraries(mtg_planner_tester ${catkin_LIBRARIES})

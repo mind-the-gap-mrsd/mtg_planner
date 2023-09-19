@@ -328,6 +328,7 @@ class LowLevelPlanner{
             }
 
         } else {
+            // Opportunity cost of not moving
             child.t = curr_node.t + 1.4*this->planning_grid.resolution/agent_velocity;
             child.g = child.t;
             child.f = child.g + child.h;
@@ -403,13 +404,13 @@ class LowLevelPlanner{
                 bool goal_is_constrained = false;
 
                 Node n(curr_node.x, curr_node.y, curr_node);
-                while(n.t <= this->max_time + t_eps){
+                while(n.t <= this->max_time){
                     if(isConstrained(n)){
                         goal_is_constrained = true;
                         curr_node.t = n.t;
                         break;
                     }
-                    n.t += t_eps;
+                    n.t += 1.4*this->planning_grid.resolution/agent_velocity;
                 }
                 if(!goal_is_constrained){ 
                     result = tracePath(curr_node);
