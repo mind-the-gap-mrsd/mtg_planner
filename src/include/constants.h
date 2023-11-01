@@ -27,12 +27,12 @@ float blocking_radius_sq = 1.3;
 // Max time duration to block out for a suspected collision
 float t_eps = ((sqrt(blocking_radius_sq)*agent_size*grid_resolution)/agent_velocity);
 // Inflation radius for collision check
-float inflation_radius = 3.3;
+float inflation_radius = 3.5;
 // Discretization time step for planning
 float delta_t = 0.2*(grid_resolution/agent_velocity);
 // float delta_t = 0.1;
 // Time out constant in seconds
-double TIME_OUT = 10; 
+double TIME_OUT = 20; 
 // Time limit for high level solution
 double SEARCH_TIME_OUT = 300;
 // Map Dilate Flag

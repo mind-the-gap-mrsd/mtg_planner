@@ -10,6 +10,7 @@
 #include "mtg_messages/agent_route.h"
 #include "mtg_messages/task.h"
 #include <std_msgs/Bool.h>
+#include <std_msgs/Int32.h>
 #include <signal.h>
 #include "include/HighLevelSearch.h"
 
@@ -30,21 +31,24 @@ class mapReceiveClass{
     ros::ServiceClient task_alloc_client;
     ros::ServiceClient controller_client;
     ros::ServiceServer replan_service;
+    ros::Publisher plan_complete_publisher;
     map<int, ros::Publisher> rviz_path_pubs; 
     vector<queue<tuple<int, int>>> task_queues;
     vector<tuple<int, int>> start_locs;
     vector<tuple<float, float>> start_locs_float;
     vector<nav_msgs::Path> agent_current_paths;
     bool replan_flag{false};
+    bool complete_flag{false};
 
     mapReceiveClass(){
         ros::NodeHandle n;
         this->nh = n;
         this->sub = this->nh.subscribe("/sim_map", 10, &mapReceiveClass::mapReceiveCallback, this);
-        this->task_alloc_client = this->nh.serviceClient<mtg_messages::ta_out>("/ta_out");
-        this->goal_set_subscriber = this->nh.subscribe<std_msgs::Bool>("goals_set", 10, &mapReceiveClass::goalSetCallback, this);
+        this->task_alloc_client = this->nh.serviceClient<mtg_messages::ta_out>("/hlp_task_server");
+        this->goal_set_subscriber = this->nh.subscribe("/plan_set", 10, &mapReceiveClass::goalSetCallback, this);
         this->controller_client = this->nh.serviceClient<mtg_messages::mtg_controller>("/mtg_controller/controller/");
         this->replan_service = this->nh.advertiseService("/mtg_planner/controller_replan", &mapReceiveClass::updateTaskQueue, this);
+        this->plan_complete_publisher = this->nh.advertise<std_msgs::Int32>("/plan_complete", 1);
     }
 
     void mapReceiveCallback(const nav_msgs::OccupancyGrid& recvOG){
@@ -63,12 +67,13 @@ class mapReceiveClass{
         this->planningGrid = grid;
 
     }
-    void goalSetCallback(const std_msgs::Bool::ConstPtr& goal_set){
+    void goalSetCallback(const std_msgs::Int32& goal_set){
         std::cout << "callback called" << std::endl;
         this->task_queues.clear();
         this->start_locs.clear();
         createTaskQueues();
-        sendPaths();        
+        sendPaths();
+        return;        
     }
 
     void createTaskQueues(){
@@ -83,7 +88,7 @@ class mapReceiveClass{
         mtg_messages::ta_out call;
         call.request.req = "please";
         this->task_alloc_client.call(call);
-        while(!call.response.agent_routes.size()){cout << "Waiting for data" << endl;}
+        // while(!call.response.agent_routes.size()){cout << "Waiting for data" << endl;}
 
         cout << "Num of agents: " << call.response.agent_routes.size() << endl;
 
@@ -259,6 +264,13 @@ class mapReceiveClass{
             // Finding paths and logging output
             output = this->findPaths();
             this->logOutput(output);
+            this->complete_flag = true;
+            for(int i = 0; i < output.size(); i++){
+                if(output.at(i).size() > 1){
+                    this->complete_flag = false;
+                    break;
+                }
+            }
             paths_to_send = this->gridToWorldTransformAnyAngle(output, 5*delta_t);
             this->agent_current_paths = paths_to_send;
             agent_names = this->createAgentNames(output);
@@ -313,7 +325,7 @@ int main(int argc, char **argv){
     signal(SIGINT, cleanExitCallback);
 
     while(1){
-        if(mpC.replan_flag){
+        if(mpC.replan_flag && !mpC.complete_flag){
             mpC.replan_flag = false;
             cout << "Calling replanning of paths" << endl;
             mpC.sendPaths();
@@ -322,6 +334,13 @@ int main(int argc, char **argv){
             for(int i=0; i < mpC.agent_current_paths.size(); i++){
                 mpC.rviz_path_pubs[i].publish(mpC.agent_current_paths.at(i));
             }
+        }
+        if(mpC.complete_flag){
+            //publish 1 to plan_complete topic
+            mpC.complete_flag = false;
+            std_msgs::Int32 msg;
+            msg.data = 1;
+            mpC.plan_complete_publisher.publish(msg);
         }
         ros::spinOnce();
         sleep(0.01);
