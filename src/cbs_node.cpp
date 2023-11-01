@@ -40,6 +40,9 @@ class mapReceiveClass{
     bool replan_flag{false};
     bool complete_flag{false};
 
+    // Dynamic start stop stuff
+    ros::ServiceClient controller_visualizer_client;
+
     mapReceiveClass(){
         ros::NodeHandle n;
         this->nh = n;
@@ -47,6 +50,7 @@ class mapReceiveClass{
         this->task_alloc_client = this->nh.serviceClient<mtg_messages::ta_out>("/hlp_task_server");
         this->goal_set_subscriber = this->nh.subscribe("/plan_set", 10, &mapReceiveClass::goalSetCallback, this);
         this->controller_client = this->nh.serviceClient<mtg_messages::mtg_controller>("/mtg_controller/controller/");
+        this->controller_visualizer_client = this->nh.serviceClient<mtg_messages::mtg_controller>("/mtg_controller/controller_visualizer/");
         this->replan_service = this->nh.advertiseService("/mtg_planner/controller_replan", &mapReceiveClass::updateTaskQueue, this);
         this->plan_complete_publisher = this->nh.advertise<std_msgs::Int32>("/plan_complete", 1);
     }
@@ -285,6 +289,7 @@ class mapReceiveClass{
             call.request.goal_id = goal_ids;
             call.request.goal_type = goal_types;
             this->controller_client.call(call);
+            this->controller_visualizer_client.call(call);
 
             // for(int i= 0; i < paths_to_send.size(); i++){
             //     this->rviz_path_pubs[i].publish(paths_to_send.at(i));
