@@ -9,10 +9,11 @@ find_package(catkin REQUIRED COMPONENTS
   mtg_messages
   mtg_task_allocation
   message_runtime
+  tf2_ros
 )
 
 catkin_package(
-  CATKIN_DEPENDS message_runtime nav_msgs geometry_msgs mtg_messages mtg_task_allocation
+  CATKIN_DEPENDS message_runtime nav_msgs geometry_msgs mtg_messages mtg_task_allocation tf2_ros
 )
 
 include_directories(

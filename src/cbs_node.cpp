@@ -4,6 +4,7 @@
 #include <nav_msgs/Path.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Pose.h>
+#include <geometry_msgs/TransformStamped.h>
 #include "mtg_messages/mtg_controller.h"
 #include "mtg_messages/controller_replan.h"
 #include "mtg_messages/ta_out.h"
@@ -11,6 +12,9 @@
 #include "mtg_messages/task.h"
 #include <std_msgs/Bool.h>
 #include <std_msgs/Int32.h>
+#include <tf/tf.h>
+#include <tf2_ros/transform_listener.h>
+
 #include <signal.h>
 #include "include/HighLevelSearch.h"
 
@@ -37,6 +41,8 @@ class mapReceiveClass{
     vector<tuple<int, int>> start_locs;
     vector<tuple<float, float>> start_locs_float;
     vector<nav_msgs::Path> agent_current_paths;
+    tf2_ros::Buffer tf_buffer_;
+    tf2_ros::TransformListener* tf_listener_;
     bool replan_flag{false};
     bool complete_flag{false};
 
@@ -53,6 +59,7 @@ class mapReceiveClass{
         this->controller_visualizer_client = this->nh.serviceClient<mtg_messages::mtg_controller>("/mtg_controller/controller_visualizer/");
         this->replan_service = this->nh.advertiseService("/mtg_planner/controller_replan", &mapReceiveClass::updateTaskQueue, this);
         this->plan_complete_publisher = this->nh.advertise<std_msgs::Int32>("/plan_complete", 1);
+        this->tf_listener_ = new tf2_ros::TransformListener(tf_buffer_);
     }
 
     void mapReceiveCallback(const nav_msgs::OccupancyGrid& recvOG){
@@ -112,7 +119,6 @@ class mapReceiveClass{
                 if(j == 0){
                     this->start_locs.push_back(make_tuple(x_i_j, y_i_j));
                     this->start_locs_float.push_back(make_tuple(f_x_i_j, f_y_i_j));
-
                 }
                 else {
                     // To ensure that planning happens for susbequent goals even if agent starts at a goal location
@@ -137,6 +143,7 @@ class mapReceiveClass{
 
     }
 
+    
     bool updateTaskQueue(mtg_messages::controller_replan::Request& controller_req,
                          mtg_messages::controller_replan::Response& controller_resp){
         // The request should contain IDs, poses and reached or not
@@ -274,6 +281,9 @@ class mapReceiveClass{
                     this->complete_flag = false;
                     break;
                 }
+            }
+            if(output.empty()){
+                this->complete_flag = false;
             }
             paths_to_send = this->gridToWorldTransformAnyAngle(output, 5*delta_t);
             this->agent_current_paths = paths_to_send;
